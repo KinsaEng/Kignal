@@ -2,9 +2,8 @@ import React from 'react';
 import { Zap, Clock, LogOut, UserPlus, X, Check, Trash2, UserX, Settings, Users } from 'lucide-react';
 
 const Sidebar = ({ 
-  currentUser, setIsLoggedIn, showRequests, setShowRequests, 
-  incomingRequests, outgoingRequests, acceptFriendRequest, rejectFriendRequest, 
-  cancelFriendRequest, setShowAddFriend, setShowCreateGroup, setShowSettings, 
+  currentUser, setIsLoggedIn, setShowRequests, incomingCount,
+  setShowAddFriend, setShowCreateGroup, setShowSettings, 
   userChats, activeChatId, setActiveChatId 
 }) => {
   return (
@@ -22,9 +21,9 @@ const Sidebar = ({
           </div>
           
           <div className="flex items-center gap-1">
-            <button onClick={() => setShowRequests(!showRequests)} className="p-2 relative text-neutral-400 hover:text-white transition">
+            <button onClick={() => setShowRequests(true)} className="p-2 relative text-neutral-400 hover:text-white transition" title="İstekler">
               <Clock className="w-5 h-5" />
-              {(incomingRequests.length > 0) && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-black" />}
+              {incomingCount > 0 && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-black" />}
             </button>
             <button onClick={() => setShowSettings(true)} className="p-2 text-neutral-400 hover:text-white transition" title="Ayarlar">
               <Settings className="w-5 h-5" />
@@ -44,8 +43,6 @@ const Sidebar = ({
           </button>
         </div>
       </div>
-
-      {/* İstek paneli değişmedi (Eski dosyadakiyle aynı bırakabilirsin) */}
       
       <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
         {userChats.length === 0 ? (

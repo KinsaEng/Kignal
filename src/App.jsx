@@ -4,9 +4,11 @@ import AuthScreen from './components/auth/AuthScreen';
 import Sidebar from './components/layout/Sidebar';
 import ChatArea from './components/chat/ChatArea';
 import AddFriendModal from './components/modals/AddFriendModal';
-import CreateGroupModal from './components/modals/CreateGroupModal'; // YENİ
+import CreateGroupModal from './components/modals/CreateGroupModal';
 import CallOverlay from './components/modals/CallOverlay';
 import SettingsModal from './components/modals/SettingsModal';
+import RequestsModal from './components/modals/RequestsModal'; // YENİ
+import ChatDetailsModal from './components/modals/ChatDetailsModal'; // YENİ
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -15,7 +17,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const KATEX_CSS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css";
 const KATEX_JS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js";
-const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY;
 
 const App = () => {
   const [loading, setLoading] = useState(true);
@@ -25,10 +26,10 @@ const App = () => {
   
   const [messages, setMessages] = useState({});
   const [friendRequests, setFriendRequests] = useState([]);
-  const [groups, setGroups] = useState([]); // YENİ: Gruplar
+  const [groups, setGroups] = useState([]); 
   const [favorites, setFavorites] = useState({ gifs: [], stickers: [] });
 
-  const [activeChatId, setActiveChatId] = useState(null); // Genel sohbet kaldırıldı, null başlıyor
+  const [activeChatId, setActiveChatId] = useState(null);
   const [inputText, setInputText] = useState("");
   const [notifications, setNotifications] = useState([]);
   
@@ -36,6 +37,7 @@ const App = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showChatDetails, setShowChatDetails] = useState(false); // YENİ
 
   const [showMediaPanel, setShowMediaPanel] = useState(null);
   const [mediaPanel, setMediaPanel] = useState(null);
@@ -61,33 +63,25 @@ const App = () => {
       if(session) setCurrentUser(session.user.user_metadata?.username || session.user.email?.split('@')[0] || session.user.phone);
       setLoading(false);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if(session) setCurrentUser(session.user.user_metadata?.username || session.user.email?.split('@')[0] || session.user.phone);
       else setCurrentUser(null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
     if (!session || !currentUser) return;
-
     const fetchRequests = async () => {
       const { data } = await supabase.from('friend_requests').select('*').or(`sender_username.eq.${currentUser},receiver_username.eq.${currentUser}`);
       if (data) setFriendRequests(data);
     };
-
     const fetchGroups = async () => {
-      // Mock Grup Çekimi (Veritabanında group_members ve groups tabloların varsa buraya bağla)
-      // Şimdilik hata vermemesi için boş array ayarlıyoruz, oluşturma fonksiyonu ekleyecek
       const { data } = await supabase.from('groups').select('*').contains('members', [currentUser]);
       if (data) setGroups(data);
     };
-
     const fetchMessages = async () => {
-      // SADECE aktif kullanıcının olduğu mesajları çeker, hızı artırır.
       const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(500); 
       if (data) {
         const grouped = {};
@@ -98,15 +92,14 @@ const App = () => {
         setMessages(grouped);
       }
     };
-
-    fetchRequests();
-    fetchGroups();
-    fetchMessages();
+    fetchRequests(); fetchGroups(); fetchMessages();
 
     const msgChannel = supabase.channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         setMessages(prev => {
           const chatMsgs = prev[payload.new.chat_id] || [];
+          // Çift mesaj (Deduplication) engelleme: Eğer mesaj zaten eklendiyse (optimistic UI) es geç.
+          if (chatMsgs.some(m => m.id === payload.new.id)) return prev;
           return { ...prev, [payload.new.chat_id]: [...chatMsgs, payload.new] };
         });
       }).subscribe();
@@ -114,16 +107,12 @@ const App = () => {
     return () => supabase.removeChannel(msgChannel);
   }, [session, currentUser]);
 
-  // Tema ve Özel Renk Entegrasyonu
   useEffect(() => {
     localStorage.setItem('kignal_theme', theme);
     const root = window.document.documentElement;
     const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-    if (isDark) root.classList.add('dark');
-    else root.classList.remove('dark');
-    
-    // Custom renk hex kodunu CSS değişkeni olarak ata
-    root.style.setProperty('--kignal-primary', primaryColor.includes('#') || primaryColor.includes('rgb') ? primaryColor : '#2563eb');
+    if (isDark) root.classList.add('dark'); else root.classList.remove('dark');
+    root.style.setProperty('--kignal-primary', primaryColor);
     localStorage.setItem('kignal_color', primaryColor);
   }, [theme, primaryColor]);
 
@@ -139,92 +128,103 @@ const App = () => {
   };
   const removeNotification = (id) => setNotifications(prev => prev.filter(n => n.id !== id));
 
+  // HIZLI MESAJ (Optimistic UI) ÇÖZÜMÜ
   const handleSend = async (type = 'text', mediaContent = null) => {
     const contentToSend = mediaContent || inputText;
     if (!contentToSend.trim() || !activeChatId) return;
 
-    const { error } = await supabase.from('messages').insert([{ 
-      content: contentToSend, sender_username: currentUser, chat_id: activeChatId, type: type 
-    }]);
+    setInputText(""); setMediaPanel(null); setShowMediaPanel(null);
 
-    if (error) notify("Mesaj gönderilemedi!", "error");
-    else { setInputText(""); setMediaPanel(null); setShowMediaPanel(null); }
+    // Veritabanına anında yaz ve geri dönen gerçek veriyi state'e ekle
+    const { data, error } = await supabase.from('messages').insert([{ 
+      content: contentToSend, sender_username: currentUser, chat_id: activeChatId, type: type 
+    }]).select('*').single();
+
+    if (error) {
+      notify("Mesaj gönderilemedi!", "error");
+    } else if (data) {
+      setMessages(prev => {
+        const currentChatMsgs = prev[activeChatId] || [];
+        if (currentChatMsgs.some(m => m.id === data.id)) return prev;
+        return { ...prev, [activeChatId]: [...currentChatMsgs, data] };
+      });
+    }
   };
 
   const sendMediaMessage = (type, content) => handleSend(type, content);
 
-  const toggleFavorite = (type, item) => {
-    setFavorites(prev => {
-      const list = prev[type];
-      const isFav = type === 'stickers' ? list.includes(item) : list.some(i => i.id === item.id);
-      if (isFav) { notify("Kaldırıldı.", "info"); return { ...prev, [type]: type === 'stickers' ? list.filter(i => i !== item) : list.filter(i => i.id !== item.id) }; } 
-      else { notify("Eklendi!", "success"); return { ...prev, [type]: [...list, item] }; }
-    });
-  };
-
-  // Çift İstek Göndermeyi Engelleme
+  // KULLANICI KONTROLLÜ İSTEK GÖNDERME
   const sendFriendRequest = async () => {
     if (!newFriendName.trim() || newFriendName === currentUser) return;
     
+    // 1. Kullanıcı gerçekten var mı kontrolü (profiles tablosundan)
+    const { data: userExists } = await supabase.from('profiles').select('username').eq('username', newFriendName).single();
+    if (!userExists) {
+      notify("Böyle bir kullanıcı bulunamadı!", "error");
+      return;
+    }
+
+    // 2. Zaten istek atılmış mı kontrolü
     const exists = friendRequests.find(r => 
       (r.sender_username === currentUser && r.receiver_username === newFriendName) || 
       (r.sender_username === newFriendName && r.receiver_username === currentUser)
     );
-    
     if (exists) {
-      notify("Bu kullanıcıyla aranızda zaten bir istek veya arkadaşlık var!", "error");
+      notify("Bu kullanıcıyla zaten bir bağınız var!", "error");
       return;
     }
 
     const { error } = await supabase.from('friend_requests').insert([{ sender_username: currentUser, receiver_username: newFriendName, status: 'pending' }]);
     if (error) notify("İstek gönderilemedi: " + error.message, "error");
-    else { notify("İstek gönderildi!", "success"); setShowAddFriend(false); setNewFriendName(""); setFriendRequests([...friendRequests, { id: Date.now(), sender_username: currentUser, receiver_username: newFriendName, status: 'pending'}]); }
+    else { 
+      notify("İstek başarıyla gönderildi!", "success"); 
+      setShowAddFriend(false); setNewFriendName(""); 
+      setFriendRequests([...friendRequests, { id: Date.now(), sender_username: currentUser, receiver_username: newFriendName, status: 'pending'}]); 
+    }
   };
 
-  const createGroup = async (groupName) => {
+  const createGroup = async (groupName, selectedMembers) => {
     if (!groupName.trim()) return;
-    // Geçici grup ekleme mantığı (Supabase'de groups tablosu olmalı)
-    const newGroup = { id: `group_${Date.now()}`, name: groupName, members: [currentUser], isGroup: true };
-    setGroups([...groups, newGroup]);
+    const members = [currentUser, ...selectedMembers];
+    const newGroup = { id: `group_${Date.now()}`, name: groupName, members: members, isGroup: true };
+    setGroups([...groups, newGroup]); // Supabase gruplarına bağladığında update et
     setActiveChatId(newGroup.id);
     setShowCreateGroup(false);
     notify("Grup oluşturuldu!", "success");
   };
 
-  const acceptFriendRequest = async (req) => {
-    await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', req.id);
-    notify("İstek kabul edildi!", "success");
-    setFriendRequests(friendRequests.map(r => r.id === req.id ? { ...r, status: 'accepted'} : r));
-  };
-  const rejectFriendRequest = async (req) => {
-    await supabase.from('friend_requests').delete().eq('id', req.id);
-    notify("İstek reddedildi.", "info");
-    setFriendRequests(friendRequests.filter(r => r.id !== req.id));
-  };
-  const cancelFriendRequest = async (req) => {
-    await supabase.from('friend_requests').delete().eq('id', req.id);
-    notify("İstek iptal edildi.", "info");
-    setFriendRequests(friendRequests.filter(r => r.id !== req.id));
+  const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
+  const outgoingRequests = useMemo(() => friendRequests.filter(r => r.sender_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
+
+  const handleRequestAction = async (reqId, action) => {
+    if(action === 'accept') await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', reqId);
+    else await supabase.from('friend_requests').delete().eq('id', reqId);
+    
+    notify(action === 'accept' ? "İstek kabul edildi!" : (action === 'reject' ? "İstek reddedildi." : "İstek iptal edildi."), action === 'accept' ? 'success' : 'info');
+    
+    if(action === 'accept') {
+      setFriendRequests(friendRequests.map(r => r.id === reqId ? { ...r, status: 'accepted'} : r));
+    } else {
+      setFriendRequests(friendRequests.filter(r => r.id !== reqId));
+    }
   };
 
   const handleStartCall = async (type) => { setIsCalling(true); setCallType(type); };
   const handleEndCall = () => { setIsCalling(false); setCallType(null); };
 
-  const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending').map(r => ({ ...r, from: r.sender_username, to: r.receiver_username })), [friendRequests, currentUser]);
-  const outgoingRequests = useMemo(() => friendRequests.filter(r => r.sender_username === currentUser && r.status === 'pending').map(r => ({ ...r, from: r.sender_username, to: r.receiver_username })), [friendRequests, currentUser]);
-
   const userChats = useMemo(() => {
     const friends = friendRequests.filter(r => r.status === 'accepted').map(r => {
       const friendName = r.sender_username === currentUser ? r.receiver_username : r.sender_username;
-      return { id: String(r.id), isGroup: false, name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Bağlantı Kuruldu' };
+      return { id: String(r.id), isGroup: false, name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Çevrimiçi' };
     });
     const groupChats = groups.map(g => ({
-      id: String(g.id), isGroup: true, name: g.name, color: 'from-purple-500 to-pink-700', lastSeen: `${g.members?.length || 1} Üye`
+      id: String(g.id), isGroup: true, name: g.name, color: 'from-purple-500 to-pink-700', lastSeen: `${g.members?.length || 1} Üye`, members: g.members
     }));
     return [...friends, ...groupChats];
   }, [friendRequests, groups, currentUser]);
 
   const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
+  const friendsList = useMemo(() => userChats.filter(c => !c.isGroup), [userChats]);
 
   const renderMessageContent = (m) => {
     if (m.type === 'gif') return <img src={m.content} className="max-w-[240px] rounded-2xl shadow-lg border border-white/10" alt="gif" />;
@@ -239,7 +239,6 @@ const App = () => {
   };
 
   if (loading) return <div className="h-screen w-screen bg-black flex items-center justify-center text-white">Yükleniyor...</div>;
-
   if (!session) return <AuthScreen authMode={authMode} setAuthMode={setAuthMode} notify={notify} notifications={notifications} removeNotification={removeNotification} />;
 
   return (
@@ -248,9 +247,7 @@ const App = () => {
       
       <Sidebar 
         currentUser={currentUser} setIsLoggedIn={() => supabase.auth.signOut()} 
-        showRequests={showRequests} setShowRequests={setShowRequests} incomingRequests={incomingRequests} 
-        outgoingRequests={outgoingRequests} acceptFriendRequest={acceptFriendRequest} 
-        rejectFriendRequest={rejectFriendRequest} cancelFriendRequest={cancelFriendRequest} 
+        setShowRequests={setShowRequests} incomingCount={incomingRequests.length}
         setShowAddFriend={setShowAddFriend} setShowCreateGroup={setShowCreateGroup} setShowSettings={setShowSettings} 
         userChats={userChats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
       />
@@ -263,23 +260,15 @@ const App = () => {
         toggleFavorite={toggleFavorite} favorites={favorites} stickerTab={stickerTab} 
         setStickerTab={setStickerTab} inputText={inputText} setInputText={setInputText} 
         handleSend={() => handleSend('text')} mediaPanel={mediaPanel} setMediaPanel={setMediaPanel}
-        currentUser={currentUser} primaryColor={primaryColor}
+        currentUser={currentUser} primaryColor={primaryColor} onHeaderClick={() => setShowChatDetails(true)}
       />
 
       {showAddFriend && <AddFriendModal setShowAddFriend={setShowAddFriend} newFriendName={newFriendName} setNewFriendName={setNewFriendName} sendFriendRequest={sendFriendRequest} />}
-      {showCreateGroup && <CreateGroupModal setShowCreateGroup={setShowCreateGroup} createGroup={createGroup} />}
+      {showCreateGroup && <CreateGroupModal setShowCreateGroup={setShowCreateGroup} createGroup={createGroup} friendsList={friendsList} />}
+      {showRequests && <RequestsModal setShowRequests={setShowRequests} incomingRequests={incomingRequests} outgoingRequests={outgoingRequests} handleAction={handleRequestAction} />}
+      {showChatDetails && <ChatDetailsModal activeChat={activeChat} setShowChatDetails={setShowChatDetails} handleStartCall={handleStartCall} notify={notify} />}
       {isCalling && <CallOverlay activeChat={activeChat} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} localVideoRef={localVideoRef} handleEndCall={handleEndCall} />}
       {showSettings && <SettingsModal setShowSettings={setShowSettings} currentUser={currentUser} setCurrentUser={setCurrentUser} supabase={supabase} notify={notify} theme={theme} setTheme={setTheme} primaryColor={primaryColor} setPrimaryColor={setPrimaryColor} />}
-
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
-        .animate-bounce-slow { animation: bounce 3s infinite; }
-        @keyframes bounce { 0%, 100% { transform: translateY(-5%); } 50% { transform: translateY(0); } }
-        .kignal-primary-bg { background-color: var(--kignal-primary); }
-        .kignal-primary-text { color: var(--kignal-primary); }
-      `}</style>
     </div>
   );
 };
