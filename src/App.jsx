@@ -3,12 +3,14 @@ import ToastContainer from './components/shared/ToastContainer';
 import AuthScreen from './components/auth/AuthScreen';
 import Sidebar from './components/layout/Sidebar';
 import ChatArea from './components/chat/ChatArea';
-import AddFriendModal from './components/modals/AddFriendModal';
-import CreateGroupModal from './components/modals/CreateGroupModal';
-import CallOverlay from './components/modals/CallOverlay';
-import SettingsModal from './components/modals/SettingsModal';
-import RequestsModal from './components/modals/RequestsModal'; // YENİ
-import ChatDetailsModal from './components/modals/ChatDetailsModal'; // YENİ
+import { 
+  AddFriendModal, 
+  CreateGroupModal, 
+  CallOverlay, 
+  SettingsModal, 
+  RequestsModal, 
+  ChatDetailsModal 
+} from './components/modals/AllModals';
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -225,6 +227,20 @@ const App = () => {
 
   const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
   const friendsList = useMemo(() => userChats.filter(c => !c.isGroup), [userChats]);
+
+  // App.jsx içerisinde uygun bir yere ekleyin
+  const toggleFavorite = (type, item) => {
+    setFavorites(prev => {
+      const list = prev[type];
+      const isFavorite = list.includes(item);
+      return {
+        ...prev,
+        [type]: isFavorite 
+          ? list.filter(i => i !== item) 
+          : [...list, item]
+      };
+    });
+  };
 
   const renderMessageContent = (m) => {
     if (m.type === 'gif') return <img src={m.content} className="max-w-[240px] rounded-2xl shadow-lg border border-white/10" alt="gif" />;
