@@ -1,0 +1,619 @@
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { 
+  Send, Mic, Video, Monitor, Sticker, Image, Type, Settings, 
+  Search, MoreVertical, Phone, VideoOff, MicOff, ScreenShare, 
+  X, Check, Lock, Smile, Paperclip, Zap, ShieldCheck, Download,
+  Layers, Palette, Activity, Info, Plus, ChevronRight, Maximize2,
+  Trash2, Globe, Command, UserPlus, LogIn, ShieldAlert, Cpu, 
+  PhoneIncoming, PhoneOutgoing, Camera, Volume2, LayoutGrid, AlertCircle, 
+  Info as InfoIcon, LogOut, UserCheck, UserX, Clock
+} from 'lucide-react';
+
+const KATEX_CSS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css";
+const KATEX_JS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js";
+
+const DEFAULT_USERS = [
+  { user: "admin", pass: "1234", email: "admin@kignal.com" },
+  { user: "zeynep", pass: "1234", email: "zeynep@kignal.com" },
+  { user: "ahmet", pass: "1234", email: "ahmet@kignal.com" }
+];
+
+const App = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login', 'register', 'forgot'
+  const [currentUser, setCurrentUser] = useState(null);
+  
+  const [registeredUsers, setRegisteredUsers] = useState(() => {
+    const saved = localStorage.getItem('kignal_users');
+    return saved ? JSON.parse(saved) : DEFAULT_USERS;
+  });
+
+  const [chats, setChats] = useState(() => {
+    const saved = localStorage.getItem('kignal_chats');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [messages, setMessages] = useState(() => {
+    const saved = localStorage.getItem('kignal_messages');
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [friendRequests, setFriendRequests] = useState(() => {
+    const saved = localStorage.getItem('kignal_requests');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [activeChatId, setActiveChatId] = useState(null);
+  const [inputText, setInputText] = useState("");
+  const [notifications, setNotifications] = useState([]);
+  const [loginInput, setLoginInput] = useState({ user: "", pass: "", email: "" });
+
+  const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showRequests, setShowRequests] = useState(false);
+  const [newFriendName, setNewFriendName] = useState("");
+  const [katexLoaded, setKatexLoaded] = useState(false);
+
+  const [isCalling, setIsCalling] = useState(false);
+  const [callType, setCallType] = useState(null); 
+  const [isMuted, setIsMuted] = useState(false);
+  const [isVideoOff, setIsVideoOff] = useState(false);
+
+  const scrollRef = useRef(null);
+  const localVideoRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('kignal_users', JSON.stringify(registeredUsers));
+    localStorage.setItem('kignal_chats', JSON.stringify(chats));
+    localStorage.setItem('kignal_messages', JSON.stringify(messages));
+    localStorage.setItem('kignal_requests', JSON.stringify(friendRequests));
+  }, [registeredUsers, chats, messages, friendRequests]);
+
+  useEffect(() => {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet'; link.href = KATEX_CSS;
+    document.head.appendChild(link);
+    const script = document.createElement('script');
+    script.src = KATEX_JS; script.async = true;
+    script.onload = () => setKatexLoaded(true);
+    document.head.appendChild(script);
+    return () => {
+      if (document.head.contains(link)) document.head.removeChild(link);
+      if (document.head.contains(script)) document.head.removeChild(script);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, activeChatId]);
+
+  const notify = (message, type = 'info') => {
+    const id = Date.now();
+    setNotifications(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 4000);
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    setCurrentUser(null);
+    setActiveChatId(null);
+    notify("Başarıyla çıkış yapıldı.", "info");
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    const user = registeredUsers.find(u => 
+      (u.user.toLowerCase() === loginInput.user.toLowerCase() || u.email === loginInput.user) && u.pass === loginInput.pass
+    );
+    if (user) { 
+      setCurrentUser(user.user); 
+      setIsLoggedIn(true); 
+      notify(`Kignal'a hoş geldin, ${user.user}!`, 'success');
+    } else { 
+      notify("Hatalı kullanıcı adı veya şifre!", "error");
+    }
+  };
+
+  const handleRegister = (e) => {
+    e.preventDefault();
+    if (!loginInput.user || !loginInput.pass || !loginInput.email) {
+      notify("Lütfen tüm alanları doldurun!", "warning");
+      return;
+    }
+    if (registeredUsers.some(u => u.user.toLowerCase() === loginInput.user.toLowerCase())) {
+      notify("Bu kullanıcı adı zaten alınmış!", "error"); 
+      return;
+    }
+    if (registeredUsers.some(u => u.email.toLowerCase() === loginInput.email.toLowerCase())) {
+      notify("Bu e-posta adresi zaten kullanımda!", "error");
+      return;
+    }
+    setRegisteredUsers(prev => [...prev, { ...loginInput }]);
+    notify("Kayıt başarılı! Şimdi giriş yapabilirsiniz.", "success");
+    setAuthMode('login');
+  };
+
+  const handleForgotPassword = (e) => {
+    e.preventDefault();
+    const user = registeredUsers.find(u => 
+      u.email.toLowerCase() === loginInput.email.toLowerCase() || 
+      u.user.toLowerCase() === loginInput.user.toLowerCase()
+    );
+
+    if (user) {
+      // Simülasyon: Şifreyi konsola yazdırıyoruz
+      console.log(`%c [KIGNAL DEBUG] Şifre Sıfırlama Talebi `, 'background: #222; color: #bada55; font-weight: bold;');
+      console.log(`Kullanıcı: ${user.user}`);
+      console.log(`E-posta: ${user.email}`);
+      console.log(`Mevcut Şifre: ${user.pass}`);
+      
+      notify("Şifre sıfırlama talimatları gönderildi! (Konsolu kontrol edin)", "success");
+      setAuthMode('login');
+    } else {
+      notify("Bu bilgilere ait bir kullanıcı bulunamadı!", "error");
+    }
+  };
+
+  const cancelFriendRequest = (reqId) => {
+    setFriendRequests(prev => prev.filter(r => r.id !== reqId));
+    notify("Arkadaşlık isteği iptal edildi.", "info");
+  };
+
+  const sendFriendRequest = () => {
+    const targetName = newFriendName.trim().toLowerCase();
+    if (!targetName) return;
+    if (targetName === currentUser.toLowerCase()) {
+      notify("Kendinize istek gönderemezsiniz!", "warning");
+      return;
+    }
+
+    const targetUser = registeredUsers.find(u => u.user.toLowerCase() === targetName);
+    if (!targetUser) {
+      notify("Kullanıcı bulunamadı!", "error");
+      return;
+    }
+
+    if (chats.some(c => (c.owner === currentUser && c.name.toLowerCase() === targetName))) {
+      notify("Bu kişiyle zaten arkadaşsınız.", "info");
+      return;
+    }
+
+    const existingReq = friendRequests.find(r => r.from === currentUser && r.to === targetUser.user);
+    if (existingReq) {
+      notify("Zaten beklemede olan bir isteğiniz var.", "warning");
+      return;
+    }
+
+    const newReq = { id: Date.now(), from: currentUser, to: targetUser.user, status: 'pending' };
+    setFriendRequests(prev => [...prev, newReq]);
+    setNewFriendName("");
+    setShowAddFriend(false);
+    notify(`${targetUser.user} kullanıcısına istek gönderildi.`, "success");
+  };
+
+  const handleRequestAction = (reqId, action) => {
+    const req = friendRequests.find(r => r.id === reqId);
+    if (action === 'accept') {
+      const colors = ['from-purple-500 to-blue-500', 'from-emerald-500 to-teal-500', 'from-pink-500 to-rose-500'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      
+      const newChatForMe = { id: `c_${Date.now()}_1`, owner: currentUser, name: req.from, color: randomColor, lastSeen: 'Şimdi' };
+      const newChatForThem = { id: `c_${Date.now()}_2`, owner: req.from, name: currentUser, color: randomColor, lastSeen: 'Şimdi' };
+      
+      setChats(prev => [...prev, newChatForMe, newChatForThem]);
+      setMessages(prev => ({ ...prev, [newChatForMe.id]: [], [newChatForThem.id]: [] }));
+      notify(`${req.from} ile artık arkadaşsınız!`, "success");
+    } else {
+      notify("İstek reddedildi.", "info");
+    }
+    setFriendRequests(prev => prev.filter(r => r.id !== reqId));
+  };
+
+  const activeChat = useMemo(() => chats.find(c => c.id === activeChatId), [activeChatId, chats]);
+  const userChats = useMemo(() => chats.filter(c => c.owner === currentUser), [chats, currentUser]);
+  const myRequests = useMemo(() => friendRequests.filter(r => r.to === currentUser), [friendRequests, currentUser]);
+  const sentRequests = useMemo(() => friendRequests.filter(r => r.from === currentUser), [friendRequests, currentUser]);
+
+  const sendMessage = () => {
+    if (!inputText.trim() || !activeChatId) return;
+    const newMessage = {
+      id: Date.now(),
+      text: inputText,
+      sender: 'me',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    
+    const receiverChat = chats.find(c => c.owner === activeChat.name && c.name === currentUser);
+    
+    setMessages(prev => {
+      const updated = { ...prev };
+      updated[activeChatId] = [...(prev[activeChatId] || []), newMessage];
+      if (receiverChat) {
+        updated[receiverChat.id] = [...(prev[receiverChat.id] || []), { ...newMessage, sender: 'them' }];
+      }
+      return updated;
+    });
+    setInputText("");
+  };
+
+  const toggleCall = async (type) => {
+    if (isCalling) {
+      if (localVideoRef.current?.srcObject) localVideoRef.current.srcObject.getTracks().forEach(t => t.stop());
+      setIsCalling(false);
+      return;
+    }
+    setCallType(type);
+    setIsCalling(true);
+    try {
+      let stream;
+      if (type === 'screen') {
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 120 }, audio: true });
+      } else {
+        stream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
+      }
+      if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+    } catch (err) {
+      notify("Kamera/Ekran izni reddedildi!", "error");
+      setIsCalling(false);
+    }
+  };
+
+  const renderContent = (text) => {
+    if (!text || typeof text !== 'string') return null;
+    let parts = text.split(/(\$\$.*?\$\$)/g);
+    return parts.map((part, index) => {
+      if (part.startsWith('$$') && part.endsWith('$$') && katexLoaded && window.katex) {
+        try {
+          const formula = part.slice(2, -2);
+          const html = window.katex.renderToString(formula, { displayMode: true, throwOnError: false });
+          return <div key={index} className="my-2 p-2 bg-black/20 rounded-xl" dangerouslySetInnerHTML={{ __html: html }} />;
+        } catch (e) { return <code key={index}>{part}</code>; }
+      }
+      return <span key={index}>{part}</span>;
+    });
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="h-screen bg-[#050505] flex items-center justify-center font-sans text-white p-6 relative overflow-hidden">
+        <ToastContainer notifications={notifications} />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-600/10 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/10 blur-[120px] rounded-full" />
+
+        <div className="w-full max-w-md bg-neutral-900/40 border border-neutral-800/50 p-10 rounded-[40px] backdrop-blur-3xl shadow-2xl z-10">
+          <div className="flex flex-col items-center mb-10">
+            <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl flex items-center justify-center shadow-2xl shadow-blue-500/20 mb-6">
+              <Zap className="w-10 h-10 text-white fill-white" />
+            </div>
+            <h1 className="text-4xl font-black tracking-tighter">Kignal</h1>
+            <p className="text-neutral-500 text-xs mt-2 font-mono tracking-widest uppercase">Ultra Secure Messenger</p>
+            
+            <div className="flex bg-black/60 p-1.5 rounded-2xl mt-8 border border-neutral-800">
+              <button onClick={() => setAuthMode('login')} className={`px-8 py-2.5 rounded-xl text-xs font-black transition ${authMode === 'login' ? 'bg-blue-600 text-white shadow-lg' : 'text-neutral-500'}`}>GİRİŞ</button>
+              <button onClick={() => setAuthMode('register')} className={`px-8 py-2.5 rounded-xl text-xs font-black transition ${authMode === 'register' ? 'bg-blue-600 text-white shadow-lg' : 'text-neutral-500'}`}>KAYIT</button>
+            </div>
+          </div>
+
+          {}
+          {authMode === 'forgot' ? (
+            <form onSubmit={handleForgotPassword} className="space-y-4">
+              <p className="text-[10px] text-neutral-500 text-center uppercase tracking-widest mb-4">Şifrenizi kurtarmak için kullanıcı adınızı veya e-postanızı girin.</p>
+              <input 
+                type="text" placeholder="E-posta veya Kullanıcı Adı" 
+                className="w-full bg-black/40 border border-neutral-800 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+                onChange={e => setLoginInput({...loginInput, email: e.target.value, user: e.target.value})} 
+              />
+              <button className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-neutral-200 transition active:scale-95 flex items-center justify-center gap-2 shadow-xl mt-4">
+                TALİMATLARI GÖNDER
+              </button>
+              <button type="button" onClick={() => setAuthMode('login')} className="w-full text-[10px] text-neutral-500 hover:text-white font-bold transition uppercase tracking-widest mt-2">
+                Geri Dön
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="space-y-4">
+              {authMode === 'register' && (
+                <input type="email" placeholder="E-posta Adresi" className="w-full bg-black/40 border border-neutral-800 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" onChange={e => setLoginInput({...loginInput, email: e.target.value})} />
+              )}
+              <input type="text" placeholder="Kullanıcı Adı" className="w-full bg-black/40 border border-neutral-800 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" onChange={e => setLoginInput({...loginInput, user: e.target.value})} />
+              <input type="password" placeholder="Şifre" className="w-full bg-black/40 border border-neutral-800 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" onChange={e => setLoginInput({...loginInput, pass: e.target.value})} />
+              
+              {authMode === 'login' && (
+                <div className="flex justify-end px-2">
+                  <button type="button" onClick={() => setAuthMode('forgot')} className="text-[10px] text-neutral-500 hover:text-blue-400 font-bold transition uppercase tracking-widest">
+                    Şifremi Unuttum?
+                  </button>
+                </div>
+              )}
+
+              <button className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-neutral-200 transition active:scale-95 flex items-center justify-center gap-2 shadow-xl mt-4">
+                {authMode === 'login' ? <LogIn className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+                {authMode === 'login' ? 'BAŞLAT' : 'HESAP OLUŞTUR'}
+              </button>
+            </form>
+          )}
+
+          <button onClick={() => { setCurrentUser("Bypass_Admin"); setIsLoggedIn(true); notify("Bypass Modu Aktif!", "info"); }} className="w-full mt-6 py-4 bg-red-600/10 border border-red-500/20 text-red-500 font-bold rounded-2xl hover:bg-red-600 hover:text-white transition flex items-center justify-center gap-2">
+            <Cpu className="w-5 h-5" /> BYPASS MODU (DEBUG)
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen bg-black text-neutral-200 font-sans overflow-hidden">
+      <ToastContainer notifications={notifications} />
+      
+      <div className="w-80 border-r border-neutral-800/40 flex flex-col bg-[#080808]">
+        <div className="p-6 flex flex-col gap-4 border-b border-neutral-800/30">
+          <div className="flex justify-between items-center">
+             <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center font-bold text-white shadow-lg"><Zap className="w-5 h-5" /></div>
+                <div className="leading-tight">
+                  <h1 className="font-bold text-sm truncate w-24 uppercase tracking-tighter">{currentUser}</h1>
+                  <span className="text-[10px] text-green-500 font-bold">ÇEVRİMİÇİ</span>
+                </div>
+              </div>
+              <button onClick={handleLogout} className="p-2 hover:bg-red-500/10 text-neutral-500 hover:text-red-500 rounded-xl transition group relative">
+                <LogOut className="w-5 h-5" />
+                <span className="absolute -bottom-8 right-0 bg-neutral-800 text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">Çıkış Yap</span>
+              </button>
+          </div>
+
+          <div className="flex gap-2">
+            <button onClick={() => setShowAddFriend(true)} className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 rounded-xl text-xs font-bold transition">
+               <UserPlus className="w-4 h-4 text-blue-500" /> KİŞİ EKLE
+            </button>
+            <button onClick={() => setShowRequests(!showRequests)} className="relative p-2.5 bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 rounded-xl transition">
+               <Clock className="w-4 h-4 text-orange-500" />
+               {myRequests.length > 0 && <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full text-[8px] flex items-center justify-center font-black animate-pulse">{myRequests.length}</span>}
+            </button>
+          </div>
+        </div>
+
+        {}
+        {showRequests && (
+          <div className="bg-neutral-900/80 p-4 border-b border-neutral-800/50 max-h-80 overflow-y-auto backdrop-blur-md">
+             <div className="mb-4">
+                <h3 className="text-[10px] font-black text-blue-500 uppercase mb-2 tracking-[0.2em]">Gelen İstekler</h3>
+                {myRequests.length === 0 && <p className="text-[10px] text-neutral-600 italic">Bekleyen gelen istek yok.</p>}
+                {myRequests.map(req => (
+                  <div key={req.id} className="flex items-center justify-between bg-black/40 p-3 rounded-xl mb-2 border border-neutral-800/50">
+                      <span className="text-xs font-bold">{req.from}</span>
+                      <div className="flex gap-2">
+                        <button onClick={() => handleRequestAction(req.id, 'accept')} className="p-1.5 bg-green-500/20 text-green-500 rounded-lg hover:bg-green-500 hover:text-white transition"><UserCheck className="w-3.5 h-3.5" /></button>
+                        <button onClick={() => handleRequestAction(req.id, 'reject')} className="p-1.5 bg-red-500/20 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition"><UserX className="w-3.5 h-3.5" /></button>
+                      </div>
+                  </div>
+                ))}
+             </div>
+
+             <div>
+                <h3 className="text-[10px] font-black text-orange-500 uppercase mb-2 tracking-[0.2em]">Giden İstekler</h3>
+                {sentRequests.length === 0 && <p className="text-[10px] text-neutral-600 italic">Gönderilmiş istek yok.</p>}
+                {sentRequests.map(req => (
+                  <div key={req.id} className="flex items-center justify-between bg-black/40 p-3 rounded-xl mb-2 border border-neutral-800/50">
+                      <span className="text-xs font-bold text-neutral-400">{req.to}</span>
+                      <button onClick={() => cancelFriendRequest(req.id)} className="p-1.5 bg-neutral-800 text-neutral-400 rounded-lg hover:bg-red-500 hover:text-white transition group flex items-center gap-2">
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="text-[8px] font-bold">İPTAL ET</span>
+                      </button>
+                  </div>
+                ))}
+             </div>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1 custom-scrollbar">
+          {userChats.length === 0 && (
+            <div className="p-8 text-center text-neutral-600">
+               <div className="w-12 h-12 bg-neutral-900 rounded-full flex items-center justify-center mx-auto mb-4"><Lock className="w-6 h-6 opacity-20" /></div>
+               <p className="text-xs font-medium">Henüz bir sohbetin yok. <br/> Arkadaş ekleyerek başla!</p>
+            </div>
+          )}
+          {userChats.map(chat => (
+            <div 
+              key={chat.id} onClick={() => setActiveChatId(chat.id)}
+              className={`flex items-center gap-4 p-4 rounded-2xl cursor-pointer transition-all ${activeChatId === chat.id ? 'bg-blue-600/15 border border-blue-500/30' : 'hover:bg-neutral-900/40 border border-transparent'}`}
+            >
+              <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${chat.color} flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
+                {chat.name[0].toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-center mb-1">
+                  <span className={`font-bold text-sm ${activeChatId === chat.id ? 'text-blue-400' : 'text-neutral-200'}`}>{chat.name}</span>
+                  <span className="text-[10px] text-neutral-600">{chat.lastSeen}</span>
+                </div>
+                <p className="text-xs text-neutral-500 truncate">Uçtan uca şifreli sohbet</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {}
+      <div className="flex-1 flex flex-col bg-[#050505] relative">
+        {activeChat ? (
+          <>
+            <div className="h-20 border-b border-neutral-800/40 flex items-center justify-between px-8 bg-black/40 backdrop-blur-2xl z-10">
+              <div className="flex items-center gap-4">
+                <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${activeChat.color} flex items-center justify-center text-white font-bold shadow-lg`}>
+                  {activeChat.name[0].toUpperCase()}
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg flex items-center gap-2">
+                    {activeChat.name} <ShieldCheck className="w-4 h-4 text-blue-500 fill-blue-500/10" />
+                  </h2>
+                  <p className="text-[10px] text-neutral-500 font-mono tracking-widest uppercase">E2EE | AES-256-KIGNAL</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <button onClick={() => toggleCall('voice')} className="p-3 bg-neutral-900/50 hover:bg-blue-600/20 text-neutral-400 hover:text-blue-400 rounded-xl transition"><Phone className="w-5 h-5" /></button>
+                <button onClick={() => toggleCall('video')} className="p-3 bg-neutral-900/50 hover:bg-blue-600/20 text-neutral-400 hover:text-blue-400 rounded-xl transition"><Video className="w-5 h-5" /></button>
+                <button onClick={() => toggleCall('screen')} className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl text-white transition font-black text-xs uppercase shadow-lg shadow-blue-600/20">
+                  <Monitor className="w-4 h-4" /> 4K 120FPS
+                </button>
+              </div>
+            </div>
+
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
+              {(messages[activeChatId] || []).length === 0 && (
+                <div className="h-full flex flex-col items-center justify-center text-neutral-700 space-y-4">
+                  <Lock className="w-12 h-12 opacity-10" />
+                  <p className="text-sm font-mono uppercase tracking-[0.4em] opacity-40">Konuşma Başlatıldı</p>
+                </div>
+              )}
+              {(messages[activeChatId] || []).map(m => (
+                <div key={m.id} className={`flex ${m.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[75%] group`}>
+                    <div className={`px-5 py-3.5 rounded-[28px] text-sm leading-relaxed shadow-xl ${
+                      m.sender === 'me' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-bl-none'
+                    }`}>
+                      {renderContent(m.text)}
+                    </div>
+                    <div className={`flex items-center gap-2 mt-2 px-2 ${m.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
+                      <span className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest">{m.time}</span>
+                      {m.sender === 'me' && <Check className="w-3 h-3 text-blue-500" />}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-6 bg-black border-t border-neutral-800/40">
+              <div className="flex items-center gap-3 max-w-5xl mx-auto">
+                <button className="p-4 bg-neutral-900/50 text-neutral-500 hover:text-white rounded-2xl transition"><Paperclip className="w-6 h-6" /></button>
+                <div className="flex-1 bg-neutral-900/50 border border-neutral-800/80 rounded-[28px] px-6 py-2 flex items-center focus-within:border-blue-500/50 transition-all">
+                  <textarea 
+                    rows="1" placeholder="Uçtan uca şifreli mesaj..."
+                    className="w-full bg-transparent py-4 focus:outline-none resize-none text-sm"
+                    value={inputText}
+                    onChange={e => setInputText(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), sendMessage())}
+                  />
+                  <button className="p-2 text-neutral-500 hover:text-yellow-400 transition"><Smile className="w-6 h-6" /></button>
+                </div>
+                <button onClick={sendMessage} className="p-5 bg-blue-600 rounded-2xl hover:bg-blue-500 transition-all active:scale-90 shadow-2xl shadow-blue-600/30 text-white">
+                  <Send className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="h-full flex flex-col items-center justify-center bg-[#030303] text-neutral-600 p-12 text-center">
+             <div className="w-24 h-24 bg-neutral-900 rounded-[40px] flex items-center justify-center mb-8 border border-neutral-800 animate-pulse">
+                <Zap className="w-12 h-12 opacity-20 text-blue-500" />
+             </div>
+             <h2 className="text-2xl font-black text-white mb-2 tracking-tighter uppercase">Kignal Ultra Messenger</h2>
+             <p className="max-w-xs text-sm leading-relaxed text-neutral-500">
+               Gizliliğin ön planda olduğu, 120FPS ekran paylaşımı ve KaTeX desteği sunan ultra güvenli iletişim hattı.
+             </p>
+             <div className="mt-8 flex gap-4">
+                <div className="px-4 py-2 bg-neutral-900 rounded-full border border-neutral-800 text-[10px] font-bold tracking-widest uppercase">E2EE</div>
+                <div className="px-4 py-2 bg-neutral-900 rounded-full border border-neutral-800 text-[10px] font-bold tracking-widest uppercase">P2P</div>
+                <div className="px-4 py-2 bg-neutral-900 rounded-full border border-neutral-800 text-[10px] font-bold tracking-widest uppercase">4K Ready</div>
+             </div>
+          </div>
+        )}
+
+        {}
+        {isCalling && (
+          <div className="absolute inset-0 z-[100] bg-black/95 backdrop-blur-3xl flex flex-col items-center justify-between p-12 animate-in fade-in zoom-in duration-300">
+            <div className="text-center">
+              <div className={`w-32 h-32 rounded-[48px] bg-gradient-to-tr ${activeChat?.color} mx-auto mb-8 flex items-center justify-center text-white text-5xl font-black shadow-2xl animate-pulse`}>
+                {activeChat?.name[0].toUpperCase()}
+              </div>
+              <h2 className="text-4xl font-black mb-2 tracking-tighter">{activeChat?.name}</h2>
+              <div className="flex items-center justify-center gap-3 text-blue-500 font-black text-[10px] uppercase tracking-[0.3em]">
+                <Activity className="w-4 h-4 animate-bounce" />
+                {callType === 'video' ? 'Görüntülü Hat' : callType === 'screen' ? '4K 120FPS Paylaşım' : 'Sesli Hat'}
+              </div>
+            </div>
+
+            <div className="w-full max-w-5xl flex gap-8 h-[50vh]">
+               <div className="flex-1 bg-neutral-900/50 rounded-[56px] overflow-hidden border border-neutral-800/50 shadow-2xl relative">
+                  <div className="absolute inset-0 flex items-center justify-center flex-col gap-4 text-neutral-700">
+                    <div className="w-20 h-20 rounded-full border-2 border-neutral-800 border-t-blue-500 animate-spin" />
+                    <p className="font-mono text-[10px] uppercase tracking-widest italic">P2P Sinyalleşme Bekleniyor...</p>
+                  </div>
+               </div>
+               {callType !== 'voice' && (
+                  <div className="w-96 bg-black rounded-[48px] overflow-hidden border-2 border-blue-600 shadow-2xl relative group">
+                    <video ref={localVideoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+                    <div className="absolute bottom-6 left-6 bg-black/60 px-4 py-2 rounded-2xl text-[10px] font-black backdrop-blur-md border border-white/10 uppercase">SİZ (ÖNİZLEME)</div>
+                  </div>
+               )}
+            </div>
+
+            <div className="flex items-center gap-10">
+              <button onClick={() => setIsMuted(!isMuted)} className={`p-7 rounded-[36px] transition-all hover:scale-110 active:scale-90 ${isMuted ? 'bg-red-500/20 text-red-500' : 'bg-neutral-800 text-white hover:bg-neutral-700'}`}>
+                {isMuted ? <MicOff className="w-9 h-9" /> : <Mic className="w-9 h-9" />}
+              </button>
+              <button onClick={() => toggleCall()} className="p-9 bg-red-600 rounded-[48px] hover:bg-red-500 transition-all hover:scale-110 active:scale-90 shadow-2xl shadow-red-600/40 group">
+                <X className="w-12 h-12 text-white group-hover:rotate-90 transition-transform" />
+              </button>
+              <button onClick={() => setIsVideoOff(!isVideoOff)} className={`p-7 rounded-[36px] transition-all hover:scale-110 active:scale-90 ${isVideoOff ? 'bg-red-500/20 text-red-500' : 'bg-neutral-800 text-white hover:bg-neutral-700'}`}>
+                {isVideoOff ? <VideoOff className="w-9 h-9" /> : <Camera className="w-9 h-9" />}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {showAddFriend && (
+          <div className="absolute inset-0 z-[150] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-200">
+            <div className="w-full max-w-sm bg-neutral-900 border border-neutral-800 p-10 rounded-[48px] shadow-2xl scale-110">
+              <div className="w-16 h-16 bg-blue-600/10 rounded-2xl flex items-center justify-center mx-auto mb-6"><UserPlus className="w-8 h-8 text-blue-500" /></div>
+              <h3 className="text-2xl font-black mb-2 text-center tracking-tighter">İstek Gönder</h3>
+              <p className="text-neutral-500 text-[10px] text-center mb-8 uppercase tracking-widest">Kignal ağındaki kullanıcıları arayın</p>
+              <input 
+                autoFocus type="text" placeholder="Kullanıcı adı..."
+                className="w-full bg-black border border-neutral-800 rounded-2xl px-6 py-4 mb-6 focus:ring-2 focus:ring-blue-500 outline-none text-center font-bold"
+                value={newFriendName} onChange={e => setNewFriendName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendFriendRequest()}
+              />
+              <div className="flex gap-4">
+                <button onClick={() => setShowAddFriend(false)} className="flex-1 py-4 bg-neutral-800 rounded-2xl font-black text-xs hover:bg-neutral-700 transition">İPTAL</button>
+                <button onClick={sendFriendRequest} className="flex-1 py-4 bg-blue-600 rounded-2xl font-black text-xs hover:bg-blue-500 transition shadow-lg shadow-blue-600/20">GÖNDER</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #333; }
+        textarea { scrollbar-width: none; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .animate-slide-in { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+      `}</style>
+    </div>
+  );
+  );
+};
+
+const ToastContainer = ({ notifications }) => {
+  return (
+    <div className="fixed bottom-8 right-8 z-[999] flex flex-col gap-4 pointer-events-none">
+      {notifications.map(n => (
+        <div key={n.id} className={`
+          pointer-events-auto min-w-[320px] p-5 rounded-[24px] border backdrop-blur-2xl flex items-center gap-4 shadow-2xl animate-slide-in
+          ${n.type === 'error' ? 'bg-red-500/10 border-red-500/30 text-red-400' : 
+            n.type === 'success' ? 'bg-green-500/10 border-green-500/30 text-green-400' : 
+            n.type === 'warning' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400' : 
+            'bg-blue-500/10 border-blue-500/30 text-blue-400'}"
+        `}>
+          <div className="p-2 bg-black/20 rounded-xl">
+            {n.type === 'error' ? <ShieldAlert className="w-5 h-5" /> : <InfoIcon className="w-5 h-5" />}
+          </div>
+          <span className="text-xs font-black uppercase tracking-wider">{n.message}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default App;
