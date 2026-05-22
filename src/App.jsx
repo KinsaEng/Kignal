@@ -73,6 +73,8 @@ const App = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+
+  //realtimeshit
   useEffect(() => {
     if (!session || !currentUser) return;
     const fetchRequests = async () => {
@@ -96,18 +98,35 @@ const App = () => {
     };
     fetchRequests(); fetchGroups(); fetchMessages();
 
-    const msgChannel = supabase.channel('public:messages')
+    const msgChannel = supabase.channel('public-messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         setMessages(prev => {
           const chatMsgs = prev[payload.new.chat_id] || [];
-          // Çift mesaj (Deduplication) engelleme: Eğer mesaj zaten eklendiyse (optimistic UI) es geç.
           if (chatMsgs.some(m => m.id === payload.new.id)) return prev;
           return { ...prev, [payload.new.chat_id]: [...chatMsgs, payload.new] };
         });
+        
+        // Eğer mesaj atan kişi veya grup Sidebar'da yoksa listeleri yenile!
+        if (!userChats.some(c => c.id === payload.new.chat_id)) {
+           fetchGroups(); // Sadece sidebar'ı güncelleyecek fonksiyonlarını çağır
+           // fetchRequests(); vb.
+        }
       }).subscribe();
 
-    return () => supabase.removeChannel(msgChannel);
-  }, [session, currentUser]);
+    // 2. Grup ve İstek Dinleyicisi (Anlık Sidebar Güncellemesi)
+    const requestsChannel = supabase.channel('public-requests')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
+        fetchRequests(); // Yeni istek geldiğinde veya kabul edildiğinde listeyi yenile
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'groups' }, () => {
+        fetchGroups(); // Yeni gruba eklendiğinde listeyi yenile
+      }).subscribe();
+
+    return () => {
+      supabase.removeChannel(msgChannel);
+      supabase.removeChannel(requestsChannel);
+    };
+  }, [session, currentUser, userChats]); // userChats'i dependency'e ekle
 
   useEffect(() => {
     localStorage.setItem('kignal_theme', theme);

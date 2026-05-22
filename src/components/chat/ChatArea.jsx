@@ -14,7 +14,27 @@ const ChatArea = ({
   sendMediaMessage, toggleFavorite, favorites, stickerTab, setStickerTab, 
   inputText, setInputText, handleSend, mediaPanel, setMediaPanel, currentUser, onHeaderClick
 }) => {
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
+const [showAttachMenu, setShowAttachMenu] = useState(false);
+const fileInputRef = React.useRef(null);
+
+const handleFileMenuClick = (type) => {
+setShowAttachMenu(false);
+if (type === 'poll') {
+// Poll modalını açacak state'i tetikle
+return;
+}
+// Resim veya dosya seçimi için gizli input'u tıkla
+fileInputRef.current.click();
+};
+
+const handleFileUpload = async (e) => {
+const file = e.target.files[0];
+if (!file) return;
+
+// Burada Supabase Storage'a yükleme yapacağız (bknz. sonraki adım)
+// Şimdilik sadece bildirim verelim:
+alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`);
+};
 
   useEffect(() => {
     if (scrollRef && scrollRef.current) {
@@ -145,18 +165,20 @@ const ChatArea = ({
               <Plus className="w-6 h-6" />
             </button>
             {showAttachMenu && (
-              <div className="absolute bottom-full left-0 mb-4 w-56 bg-[#111] border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-bottom-2">
-                <button className="w-full text-left px-5 py-4 hover:bg-neutral-800 text-sm font-bold flex items-center gap-3 text-white transition"><Image className="w-5 h-5 text-blue-400"/> Photos & Videos</button>
+                <div className="absolute bottom-full left-0 mb-4 w-56 bg-[#111] border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-50">
+                <button onClick={() => handleFileMenuClick('media')} className="w-full text-left px-5 py-4 hover:bg-neutral-800 text-sm font-bold flex items-center gap-3 text-white transition"><Image className="w-5 h-5 text-blue-400"/> Photos & Videos</button>
                 <div className="h-[1px] w-full bg-neutral-800/50"></div>
-                <button className="w-full text-left px-5 py-4 hover:bg-neutral-800 text-sm font-bold flex items-center gap-3 text-white transition"><File className="w-5 h-5 text-emerald-400"/> Files</button>
+                <button onClick={() => handleFileMenuClick('file')} className="w-full text-left px-5 py-4 hover:bg-neutral-800 text-sm font-bold flex items-center gap-3 text-white transition"><File className="w-5 h-5 text-emerald-400"/> Files</button>
                 {activeChat.isGroup && (
-                  <>
+                    <>
                     <div className="h-[1px] w-full bg-neutral-800/50"></div>
-                    <button className="w-full text-left px-5 py-4 hover:bg-neutral-800 text-sm font-bold flex items-center gap-3 text-white transition"><BarChart2 className="w-5 h-5 text-purple-400"/> Poll</button>
-                  </>
+                    <button onClick={() => handleFileMenuClick('poll')} className="w-full text-left px-5 py-4 hover:bg-neutral-800 text-sm font-bold flex items-center gap-3 text-white transition"><BarChart2 className="w-5 h-5 text-purple-400"/> Poll</button>
+                    </>
                 )}
-              </div>
+                </div>
             )}
+            {/* Gizli Input */}
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           </div>
 
           <div className="flex-1 bg-neutral-900/50 border border-neutral-800/80 rounded-[28px] px-6 flex items-end relative min-h-[50px]">

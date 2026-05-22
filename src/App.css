@@ -182,3 +182,19 @@
     border-right-color: var(--border);
   }
 }
+
+
+
+:root {
+  --kignal-primary: #2563eb; /* Varsayılan renk */
+}
+
+/* Bu sınıfları ChatArea ve Sidebar'da kullandığın için burada tanımlıyoruz */
+.kignal-primary-bg { background-color: var(--kignal-primary) !important; }
+.kignal-primary-text { color: var(--kignal-primary) !important; }
+
+/* Dark mode arka planları için */
+html.dark body {
+  background-color: #000 !important;
+  color: #fff !important;
+}
