@@ -25,11 +25,11 @@ const App = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState('login');
   
-  // Local states for UI
-  const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem('kignal_chats')) || [{ id: 'general', owner: 'all', name: 'Genel Sohbet', color: 'from-blue-600 to-indigo-700', lastSeen: 'Her zaman aktif' }]);
-  const [messages, setMessages] = useState({});
-  const [friendRequests, setFriendRequests] = useState(() => JSON.parse(localStorage.getItem('kignal_requests')) || []);
-  const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('kignal_favorites')) || { gifs: [], stickers: [] });
+  // // Local states for UI
+  // const [chats, setChats] = useState(() => JSON.parse(localStorage.getItem('kignal_chats')) || [{ id: 'general', owner: 'all', name: 'Genel Sohbet', color: 'from-blue-600 to-indigo-700', lastSeen: 'Her zaman aktif' }]);
+  // const [messages, setMessages] = useState({});
+  // const [friendRequests, setFriendRequests] = useState(() => JSON.parse(localStorage.getItem('kignal_requests')) || []);
+  // const [favorites, setFavorites] = useState(() => JSON.parse(localStorage.getItem('kignal_favorites')) || { gifs: [], stickers: [] });
 
   const [activeChatId, setActiveChatId] = useState('general');
   const [inputText, setInputText] = useState("");
@@ -124,12 +124,12 @@ const App = () => {
   // primary rengini bu değişkene bağlayabiliriz. Şimdilik SettingsModal içinde çalışır.
   }, [primaryColor]);
 
-  // UI LocalStorage Sync
-  useEffect(() => {
-    localStorage.setItem('kignal_chats', JSON.stringify(chats));
-    localStorage.setItem('kignal_requests', JSON.stringify(friendRequests));
-    localStorage.setItem('kignal_favorites', JSON.stringify(favorites));
-  }, [chats, friendRequests, favorites]);
+  // // UI LocalStorage Sync
+  // useEffect(() => {
+  //   localStorage.setItem('kignal_chats', JSON.stringify(chats));
+  //   localStorage.setItem('kignal_requests', JSON.stringify(friendRequests));
+  //   localStorage.setItem('kignal_favorites', JSON.stringify(favorites));
+  // }, [chats, friendRequests, favorites]);
 
   // KaTeX Script Load
   useEffect(() => {
