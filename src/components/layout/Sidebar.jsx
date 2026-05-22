@@ -4,18 +4,18 @@ import { Zap, Clock, LogOut, UserPlus, X, Check, Trash2, UserX, Settings, Users 
 const Sidebar = ({ 
   currentUser, setIsLoggedIn, setShowRequests, incomingCount,
   setShowAddFriend, setShowCreateGroup, setShowSettings, 
-  userChats, activeChatId, setActiveChatId 
+  userChats, activeChatId, setActiveChatId, primaryColor
 }) => {
   return (
-    <div className="w-80 border-r border-neutral-800/40 flex flex-col bg-[#080808] z-30">
-      <div className="p-6 flex flex-col gap-4 border-b border-neutral-800/30">
+    <div className="w-80 border-r border-neutral-200 dark:border-neutral-800/40 flex flex-col bg-neutral-50 dark:bg-[#080808] z-30 transition-colors">
+      <div className="p-6 flex flex-col gap-4 border-b border-neutral-200 dark:border-neutral-800/30">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl kignal-primary-bg flex items-center justify-center font-bold text-white shadow-lg">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-white shadow-lg" style={{ background: primaryColor }}>
               <Zap className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="font-black text-xs tracking-tight text-white uppercase truncate w-24">{currentUser}</h1>
+              <h1 className="font-black text-xs tracking-tight text-neutral-900 dark:text-white uppercase truncate w-24">{currentUser}</h1>
               <p className="text-[9px] text-green-500 font-bold uppercase tracking-wider">Aktif</p>
             </div>
           </div>

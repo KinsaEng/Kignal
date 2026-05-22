@@ -55,19 +55,16 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
   }
    
   return (
-    <div className="flex-1 flex flex-col bg-[#050505] relative">
-      {/* TIKLANABİLİR HEADER EKLENDİ */}
-      <div 
-        onClick={onHeaderClick}
-        className="h-20 border-b border-neutral-800/40 flex items-center justify-between px-8 bg-black/40 backdrop-blur-2xl z-20 cursor-pointer hover:bg-white/5 transition-colors"
-      >
+    <div className="flex-1 flex flex-col bg-neutral-50 dark:bg-[#050505] relative transition-colors duration-300">
+      
+      <div onClick={onHeaderClick} className="h-20 border-b border-neutral-200 dark:border-neutral-800/40 flex items-center justify-between px-8 bg-white/40 dark:bg-black/40 backdrop-blur-2xl z-20 cursor-pointer hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
         <div className="flex items-center gap-4">
-          <div className={`w-11 h-11 rounded-2xl bg-gradient-to-tr ${activeChat.color} flex items-center justify-center text-white font-black`}>
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black shadow-lg" style={{ background: activeChat.color || primaryColor }}>
             {activeChat.name[0]?.toUpperCase()}
           </div>
           <div>
-            <h2 className="font-bold text-lg flex items-center gap-2">
-              {activeChat.name} {activeChat.isGroup ? <span className="text-xs bg-neutral-800 px-2 rounded-md">GRUP</span> : <ShieldCheck className="w-4 h-4 kignal-primary-text" />}
+            <h2 className="font-bold text-lg text-neutral-900 dark:text-white flex items-center gap-2">
+              {activeChat.name} {activeChat.isGroup ? <span className="text-xs bg-neutral-200 dark:bg-neutral-800 px-2 rounded-md">GRUP</span> : <ShieldCheck className="w-4 h-4" style={{ color: primaryColor }} />}
             </h2>
             <p className="text-[10px] text-neutral-500 uppercase font-mono tracking-widest">{activeChat.isGroup ? 'Çoklu Bağlantı' : 'Kignal Double Ratchet v2'}</p>
           </div>
@@ -79,28 +76,28 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
       </div>
 
       <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
-        {(messages[activeChatId] || []).length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-center text-neutral-600 space-y-2">
-            <ShieldCheck className="w-8 h-8 opacity-25 kignal-primary-text" />
-            <p className="text-xs">İlk mesajı gönderin!</p>
-          </div>
-        ) : (
-          (messages[activeChatId] || []).map(m => {
+        {/* 2. AŞAMA: Mesaj Baloncuklarına Inline Style Veriyoruz */}
+        {(messages[activeChatId] || []).map(m => {
             const isMe = m.sender_username === currentUser;
             return (
               <div key={m.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[70%] ${isMe ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
                   {activeChat.isGroup && !isMe && <span className="text-[10px] text-neutral-500 ml-2">{m.sender_username}</span>}
-                  <div className={`p-1 rounded-[28px] overflow-hidden ${m.type === 'text' ? 'px-6 py-4' : ''} ${isMe ? 'kignal-primary-bg text-white rounded-br-none shadow-xl' : 'bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-bl-none shadow-xl'}`}>
+                  
+                  {/* ÖNEMLİ KISIM: isMe ise senin seçtiğin RGB/Gradient arkaplan uygulanır */}
+                  <div 
+                    className={`p-1 rounded-[28px] overflow-hidden ${m.type === 'text' ? 'px-6 py-4' : ''} ${isMe ? 'text-white rounded-br-none shadow-xl border-none' : 'bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 text-neutral-800 dark:text-neutral-200 rounded-bl-none shadow-xl'}`}
+                    style={isMe ? { background: primaryColor } : {}}
+                  >
                     {renderMessageContent(m)}
                   </div>
-                  <span className="text-[9px] font-mono text-neutral-600 tracking-widest px-2">{new Date(m.created_at || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                  
+                  <span className="text-[9px] font-mono text-neutral-500 tracking-widest px-2">{new Date(m.created_at || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                 </div>
               </div>
             );
-          })
-        )}
-        <div ref={scrollRef} ></div>
+          })}
+        <div ref={scrollRef}></div>
       </div>
 
       {/* DİKEY MEDYA PANELİ DÜZENLEMESİ (w-[360px] h-[500px]) */}
@@ -155,7 +152,7 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
         </div>
       )}
 
-      <div className="p-6 bg-black/60 border-t border-neutral-800/40 w-full">
+      <div className="p-6 bg-white/60 dark:bg-black/60 border-t border-neutral-200 dark:border-neutral-800/40 w-full backdrop-blur-md">
         <div className="mx-auto flex items-end gap-3 relative">
           <div className="relative flex items-center justify-center mb-1">
             <button 
@@ -181,10 +178,10 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           </div>
 
-          <div className="flex-1 bg-neutral-900/50 border border-neutral-800/80 rounded-[28px] px-6 flex items-end relative min-h-[50px]">
+          <div className="flex-1 bg-neutral-100 dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800/80 rounded-[28px] px-6 flex items-end relative min-h-[50px]">
             <textarea 
               rows="1" placeholder="Mesaj yazın..."
-              className="w-full bg-transparent py-4 focus:outline-none resize-none text-sm text-white custom-scrollbar max-h-32"
+              className="w-full bg-transparent py-4 focus:outline-none resize-none text-sm text-neutral-900 dark:text-white custom-scrollbar max-h-32"
               value={inputText} onChange={e => setInputText(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
             />
@@ -197,7 +194,8 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
               </div>
             )}
           </div>
-          <button onClick={() => handleSend()} className="w-12 h-12 flex items-center justify-center kignal-primary-bg rounded-2xl hover:brightness-110 transition-all active:scale-90 text-white shadow-xl mb-1">
+          <button onClick={() => handleSend()} className="w-12 h-12 flex items-center justify-center rounded-2xl hover:brightness-110 transition-all active:scale-90 text-white shadow-xl mb-1"
+             style={{ background: primaryColor }}>
             <Send className="w-5 h-5 ml-1" />
           </button>
         </div>

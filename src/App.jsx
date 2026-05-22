@@ -39,7 +39,7 @@ const App = () => {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showChatDetails, setShowChatDetails] = useState(false); // YENİ
+  const [showChatDetails, setShowChatDetails] = useState(false);
 
   const [showMediaPanel, setShowMediaPanel] = useState(null);
   const [mediaPanel, setMediaPanel] = useState(null);
@@ -59,6 +59,26 @@ const App = () => {
   const [theme, setTheme] = useState(() => localStorage.getItem('kignal_theme') || 'system');
   const [primaryColor, setPrimaryColor] = useState(() => localStorage.getItem('kignal_color') || '#2563eb');
 
+  // --- 2. USEMEMO TANIMLAMALARI (YUKARI ALINDI!) ---
+  const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
+  const outgoingRequests = useMemo(() => friendRequests.filter(r => r.sender_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
+
+  const userChats = useMemo(() => {
+    const friends = friendRequests.filter(r => r.status === 'accepted').map(r => {
+      const friendName = r.sender_username === currentUser ? r.receiver_username : r.sender_username;
+      return { id: String(r.id), isGroup: false, name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Çevrimiçi' };
+    });
+    const groupChats = groups.map(g => ({
+      id: String(g.id), isGroup: true, name: g.name, color: 'from-purple-500 to-pink-700', lastSeen: `${g.members?.length || 1} Üye`, members: g.members
+    }));
+    return [...friends, ...groupChats];
+  }, [friendRequests, groups, currentUser]);
+
+  const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
+  const friendsList = useMemo(() => userChats.filter(c => !c.isGroup), [userChats]);
+
+
+  // --- 3. USEEFFECT KULLANIMLARI (ŞİMDİ SORUNSUZ ÇALIŞACAK) ---
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -73,8 +93,6 @@ const App = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-
-  //realtimeshit
   useEffect(() => {
     if (!session || !currentUser) return;
     const fetchRequests = async () => {
@@ -106,27 +124,25 @@ const App = () => {
           return { ...prev, [payload.new.chat_id]: [...chatMsgs, payload.new] };
         });
         
-        // Eğer mesaj atan kişi veya grup Sidebar'da yoksa listeleri yenile!
+        // userChats artık burada tanımlı olduğu için hata vermeyecek!
         if (!userChats.some(c => c.id === payload.new.chat_id)) {
-           fetchGroups(); // Sadece sidebar'ı güncelleyecek fonksiyonlarını çağır
-           // fetchRequests(); vb.
+           fetchGroups(); 
         }
       }).subscribe();
 
-    // 2. Grup ve İstek Dinleyicisi (Anlık Sidebar Güncellemesi)
     const requestsChannel = supabase.channel('public-requests')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
-        fetchRequests(); // Yeni istek geldiğinde veya kabul edildiğinde listeyi yenile
+        fetchRequests();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'groups' }, () => {
-        fetchGroups(); // Yeni gruba eklendiğinde listeyi yenile
+        fetchGroups();
       }).subscribe();
 
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(requestsChannel);
     };
-  }, [session, currentUser, userChats]); // userChats'i dependency'e ekle
+  }, [session, currentUser, userChats]);
 
   useEffect(() => {
     localStorage.setItem('kignal_theme', theme);
@@ -174,17 +190,23 @@ const App = () => {
 
   const sendMediaMessage = (type, content) => handleSend(type, content);
 
-  // KULLANICI KONTROLLÜ İSTEK GÖNDERME
+
   const sendFriendRequest = async () => {
     if (!newFriendName.trim() || newFriendName === currentUser) return;
     
-    // 1. Kullanıcı gerçekten var mı kontrolü (profiles tablosundan)
-    const { data: userExists } = await supabase.from('profiles').select('username').eq('username', newFriendName).single();
-    if (!userExists) {
-      notify("Böyle bir kullanıcı bulunamadı!", "error");
+    // HATA DÜZELTMESİ: Eğer 'profiles' tablosu RLS'e takılırsa uygulama çökmesin
+    const { data: userExists, error: userError } = await supabase.from('profiles').select('username').eq('username', newFriendName).single();
+    
+    if (userError && userError.code !== 'PGRST116') {
+      notify("Sistem Hatası: " + userError.message, "error");
       return;
     }
 
+    if (!userExists) {
+      notify("Böyle bir kullanıcı bulunamadı (Büyük/Küçük harf duyarlı olabilir)!", "error");
+      return;
+    }
+    
     // 2. Zaten istek atılmış mı kontrolü
     const exists = friendRequests.find(r => 
       (r.sender_username === currentUser && r.receiver_username === newFriendName) || 
@@ -214,9 +236,6 @@ const App = () => {
     notify("Grup oluşturuldu!", "success");
   };
 
-  const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
-  const outgoingRequests = useMemo(() => friendRequests.filter(r => r.sender_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
-
   const handleRequestAction = async (reqId, action) => {
     if(action === 'accept') await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', reqId);
     else await supabase.from('friend_requests').delete().eq('id', reqId);
@@ -233,19 +252,6 @@ const App = () => {
   const handleStartCall = async (type) => { setIsCalling(true); setCallType(type); };
   const handleEndCall = () => { setIsCalling(false); setCallType(null); };
 
-  const userChats = useMemo(() => {
-    const friends = friendRequests.filter(r => r.status === 'accepted').map(r => {
-      const friendName = r.sender_username === currentUser ? r.receiver_username : r.sender_username;
-      return { id: String(r.id), isGroup: false, name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Çevrimiçi' };
-    });
-    const groupChats = groups.map(g => ({
-      id: String(g.id), isGroup: true, name: g.name, color: 'from-purple-500 to-pink-700', lastSeen: `${g.members?.length || 1} Üye`, members: g.members
-    }));
-    return [...friends, ...groupChats];
-  }, [friendRequests, groups, currentUser]);
-
-  const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
-  const friendsList = useMemo(() => userChats.filter(c => !c.isGroup), [userChats]);
 
   // App.jsx içerisinde uygun bir yere ekleyin
   const toggleFavorite = (type, item) => {
@@ -277,11 +283,12 @@ const App = () => {
   if (!session) return <AuthScreen authMode={authMode} setAuthMode={setAuthMode} notify={notify} notifications={notifications} removeNotification={removeNotification} />;
 
   return (
-    <div className="flex h-screen bg-black text-neutral-200 font-sans overflow-hidden kignal-theme-wrapper">
+    <div className="flex h-screen bg-white dark:bg-[#030303] text-neutral-900 dark:text-neutral-200 font-sans overflow-hidden transition-colors duration-300">
       <ToastContainer notifications={notifications} removeNotification={removeNotification} />
       
+      
       <Sidebar 
-        currentUser={currentUser} setIsLoggedIn={() => supabase.auth.signOut()} 
+        currentUser={currentUser} primaryColor={primaryColor} setIsLoggedIn={() => supabase.auth.signOut()} 
         setShowRequests={setShowRequests} incomingCount={incomingRequests.length}
         setShowAddFriend={setShowAddFriend} setShowCreateGroup={setShowCreateGroup} setShowSettings={setShowSettings} 
         userChats={userChats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}

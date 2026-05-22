@@ -7,16 +7,16 @@ margin: 0;
 background-color: black;
 }
 
-
+/* Bu kodun aynısını hem app.css hem input.css içine koy (veya tek bir ana CSS dosyasında tut) */
 :root {
   --kignal-primary: #2563eb; /* Varsayılan renk */
 }
 
-/* Bu sınıfları ChatArea ve Sidebar'da kullandığın için burada tanımlıyoruz */
+/* Sınıfları tek bir isimle tut */
 .kignal-primary-bg { background-color: var(--kignal-primary) !important; }
 .kignal-primary-text { color: var(--kignal-primary) !important; }
 
-/* Dark mode arka planları için */
+/* Dark mode ayarların */
 html.dark body {
   background-color: #000 !important;
   color: #fff !important;
