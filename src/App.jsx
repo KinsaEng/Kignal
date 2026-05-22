@@ -111,7 +111,15 @@ const App = () => {
     };
 
     const fetchGroups = async () => {
-      const { data, error } = await supabase.from('groups').select('*').contains('members', [currentUser]);
+      // ESKİ HALİ (Bunu sil)
+      // const { data, error } = await supabase.from('groups').select('*').contains('members', [userId]);
+
+      // YENİ HALİ (Bu doğru olan)
+      const { data, error } = await supabase
+        .from('groups')
+        .select('*, group_members!inner(user_id)') // group_members tablosu ile birleştir
+        .eq('group_members.user_id', userId); // user_id'si senin olanları getir
+        
       if (error) console.error("Grup çekme hatası:", error);
       if (data) setGroups(data);
     };
@@ -209,7 +217,27 @@ const App = () => {
     if (!newFriendName.trim() || newFriendName === currentUser) return;
     
     // HATA DÜZELTMESİ: Eğer 'profiles' tablosu RLS'e takılırsa uygulama çökmesin
-    const { data: userExists, error: userError } = await supabase.from('profiles').select('username').ilike('username', newFriendName).maybeSingle();
+    // ESKİ HALİ: .single() hata fırlatır eğer bulamazsa.
+    // const { data, error } = await supabase.from('profiles').select('*').eq('username', newFriendName).single();
+
+    // YENİ HALİ: .maybeSingle() bulamazsa hata yerine "null" döndürür, uygulama çökmez.
+    const { data: userExists, error: userError } = await supabase
+      .from('profiles')
+      .select('*')
+      .ilike('username', newFriendName) // Büyük/küçük harf duyarlılığını kaldırır
+      .maybeSingle();
+
+    if (userError) {
+        // Gerçek bir veritabanı hatası varsa buraya düşer
+        console.error(userError);
+        return;
+    }
+
+    if (!userExists) {
+        // Kullanıcı yoksa, artık hata almayacaksın, buraya düşeceksin
+        notify("Kullanıcı bulunamadı!", "error");
+        return;
+    }
 
     if (userError && userError.code !== 'PGRST116') {
       notify("Sistem Hatası: " + userError.message, "error");
