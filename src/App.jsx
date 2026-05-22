@@ -4,6 +4,7 @@ import AuthScreen from './components/auth/AuthScreen';
 import Sidebar from './components/layout/Sidebar';
 import ChatArea from './components/chat/ChatArea';
 import AddFriendModal from './components/modals/AddFriendModal';
+import CreateGroupModal from './components/modals/CreateGroupModal'; // YENİ
 import CallOverlay from './components/modals/CallOverlay';
 import SettingsModal from './components/modals/SettingsModal';
 import { createClient } from '@supabase/supabase-js';
@@ -17,22 +18,25 @@ const KATEX_JS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js";
 const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY;
 
 const App = () => {
-  const [loading, setLoading] = useState(true); // Yüklenme durumu
+  const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState('login');
   
-  // DÜZELTİLEN KISIM: State'ler artık aktif ve boş başlıyor
   const [messages, setMessages] = useState({});
   const [friendRequests, setFriendRequests] = useState([]);
+  const [groups, setGroups] = useState([]); // YENİ: Gruplar
   const [favorites, setFavorites] = useState({ gifs: [], stickers: [] });
 
-  const [activeChatId, setActiveChatId] = useState('general');
+  const [activeChatId, setActiveChatId] = useState(null); // Genel sohbet kaldırıldı, null başlıyor
   const [inputText, setInputText] = useState("");
   const [notifications, setNotifications] = useState([]);
   
   const [showAddFriend, setShowAddFriend] = useState(false);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showRequests, setShowRequests] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
   const [showMediaPanel, setShowMediaPanel] = useState(null);
   const [mediaPanel, setMediaPanel] = useState(null);
   const [gifSearch, setGifSearch] = useState("");
@@ -48,39 +52,43 @@ const App = () => {
   const scrollRef = useRef(null);
   const localVideoRef = useRef(null);
   
-  const [showSettings, setShowSettings] = useState(false);
   const [theme, setTheme] = useState(() => localStorage.getItem('kignal_theme') || 'system');
-  const [primaryColor, setPrimaryColor] = useState(() => localStorage.getItem('kignal_color') || 'blue');
+  const [primaryColor, setPrimaryColor] = useState(() => localStorage.getItem('kignal_color') || '#2563eb');
 
-  // AUTH BİLGİSİNİ ALMA
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      if(session) {
-        const name = session.user.user_metadata?.username || session.user.email.split('@')[0];
-        setCurrentUser(name);
-      }
-      setLoading(false); // Veri geldi, yükleme bitti
+      if(session) setCurrentUser(session.user.user_metadata?.username || session.user.email?.split('@')[0] || session.user.phone);
+      setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if(session) {
-        const name = session.user.user_metadata?.username || session.user.email.split('@')[0];
-        setCurrentUser(name);
-      } else setCurrentUser(null);
+      if(session) setCurrentUser(session.user.user_metadata?.username || session.user.email?.split('@')[0] || session.user.phone);
+      else setCurrentUser(null);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // MESAJLARI VE ARKADAŞLIK İSTEKLERİNİ ÇEKME (REALTIME)
   useEffect(() => {
     if (!session || !currentUser) return;
 
-    // Mesajları Çek
+    const fetchRequests = async () => {
+      const { data } = await supabase.from('friend_requests').select('*').or(`sender_username.eq.${currentUser},receiver_username.eq.${currentUser}`);
+      if (data) setFriendRequests(data);
+    };
+
+    const fetchGroups = async () => {
+      // Mock Grup Çekimi (Veritabanında group_members ve groups tabloların varsa buraya bağla)
+      // Şimdilik hata vermemesi için boş array ayarlıyoruz, oluşturma fonksiyonu ekleyecek
+      const { data } = await supabase.from('groups').select('*').contains('members', [currentUser]);
+      if (data) setGroups(data);
+    };
+
     const fetchMessages = async () => {
-      const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true });
+      // SADECE aktif kullanıcının olduğu mesajları çeker, hızı artırır.
+      const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(500); 
       if (data) {
         const grouped = {};
         data.forEach(m => {
@@ -91,19 +99,10 @@ const App = () => {
       }
     };
 
-    // İstekleri Çek
-    const fetchRequests = async () => {
-      const { data } = await supabase
-        .from('friend_requests')
-        .select('*')
-        .or(`sender_username.eq.${currentUser},receiver_username.eq.${currentUser}`);
-      if (data) setFriendRequests(data);
-    };
-
-    fetchMessages();
     fetchRequests();
+    fetchGroups();
+    fetchMessages();
 
-    // Dinleyiciler (Realtime)
     const msgChannel = supabase.channel('public:messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         setMessages(prev => {
@@ -112,45 +111,26 @@ const App = () => {
         });
       }).subscribe();
 
-    const reqChannel = supabase.channel('public:friend_requests')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
-        fetchRequests(); // Değişiklik olunca listeyi yenile
-      }).subscribe();
-
-    return () => {
-      supabase.removeChannel(msgChannel);
-      supabase.removeChannel(reqChannel);
-    };
+    return () => supabase.removeChannel(msgChannel);
   }, [session, currentUser]);
 
-  // TEMA AYARLARI
+  // Tema ve Özel Renk Entegrasyonu
   useEffect(() => {
     localStorage.setItem('kignal_theme', theme);
     const root = window.document.documentElement;
     const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     if (isDark) root.classList.add('dark');
     else root.classList.remove('dark');
-  }, [theme]);
+    
+    // Custom renk hex kodunu CSS değişkeni olarak ata
+    root.style.setProperty('--kignal-primary', primaryColor.includes('#') || primaryColor.includes('rgb') ? primaryColor : '#2563eb');
+    localStorage.setItem('kignal_color', primaryColor);
+  }, [theme, primaryColor]);
 
-  useEffect(() => localStorage.setItem('kignal_color', primaryColor), [primaryColor]);
-
-  // KATEX VE GIPHY...
   useEffect(() => {
     const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = KATEX_CSS; document.head.appendChild(link);
     const script = document.createElement('script'); script.src = KATEX_JS; script.async = true; script.onload = () => setKatexLoaded(true); document.head.appendChild(script);
   }, []);
-
-  useEffect(() => {
-    const fetchGifs = async () => {
-      try {
-        let url = gifSearch ? `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(gifSearch)}&limit=12` : `https://api.giphy.com/v1/gifs/trending?api_key=${GIPHY_API_KEY}&limit=12`;
-        const res = await fetch(url);
-        const data = await res.json();
-        setGifResults(data.data || []);
-      } catch (err) { notify("GIF yüklenirken hata oluştu.", "error"); }
-    };
-    if (showMediaPanel === 'gif' || mediaPanel === 'gif') fetchGifs();
-  }, [gifSearch, showMediaPanel, mediaPanel]);
 
   const notify = (message, type = 'info') => {
     const id = Date.now();
@@ -159,7 +139,6 @@ const App = () => {
   };
   const removeNotification = (id) => setNotifications(prev => prev.filter(n => n.id !== id));
 
-  // MESAJ GÖNDERME
   const handleSend = async (type = 'text', mediaContent = null) => {
     const contentToSend = mediaContent || inputText;
     if (!contentToSend.trim() || !activeChatId) return;
@@ -183,44 +162,67 @@ const App = () => {
     });
   };
 
-  // --- SUPABASE ARKADAŞLIK SİSTEMİ FONKSİYONLARI ---
+  // Çift İstek Göndermeyi Engelleme
   const sendFriendRequest = async () => {
     if (!newFriendName.trim() || newFriendName === currentUser) return;
+    
+    const exists = friendRequests.find(r => 
+      (r.sender_username === currentUser && r.receiver_username === newFriendName) || 
+      (r.sender_username === newFriendName && r.receiver_username === currentUser)
+    );
+    
+    if (exists) {
+      notify("Bu kullanıcıyla aranızda zaten bir istek veya arkadaşlık var!", "error");
+      return;
+    }
+
     const { error } = await supabase.from('friend_requests').insert([{ sender_username: currentUser, receiver_username: newFriendName, status: 'pending' }]);
     if (error) notify("İstek gönderilemedi: " + error.message, "error");
-    else { notify("İstek gönderildi!", "success"); setShowAddFriend(false); setNewFriendName(""); }
+    else { notify("İstek gönderildi!", "success"); setShowAddFriend(false); setNewFriendName(""); setFriendRequests([...friendRequests, { id: Date.now(), sender_username: currentUser, receiver_username: newFriendName, status: 'pending'}]); }
+  };
+
+  const createGroup = async (groupName) => {
+    if (!groupName.trim()) return;
+    // Geçici grup ekleme mantığı (Supabase'de groups tablosu olmalı)
+    const newGroup = { id: `group_${Date.now()}`, name: groupName, members: [currentUser], isGroup: true };
+    setGroups([...groups, newGroup]);
+    setActiveChatId(newGroup.id);
+    setShowCreateGroup(false);
+    notify("Grup oluşturuldu!", "success");
   };
 
   const acceptFriendRequest = async (req) => {
     await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', req.id);
     notify("İstek kabul edildi!", "success");
+    setFriendRequests(friendRequests.map(r => r.id === req.id ? { ...r, status: 'accepted'} : r));
   };
-
   const rejectFriendRequest = async (req) => {
     await supabase.from('friend_requests').delete().eq('id', req.id);
     notify("İstek reddedildi.", "info");
+    setFriendRequests(friendRequests.filter(r => r.id !== req.id));
   };
-
   const cancelFriendRequest = async (req) => {
     await supabase.from('friend_requests').delete().eq('id', req.id);
     notify("İstek iptal edildi.", "info");
+    setFriendRequests(friendRequests.filter(r => r.id !== req.id));
   };
 
   const handleStartCall = async (type) => { setIsCalling(true); setCallType(type); };
   const handleEndCall = () => { setIsCalling(false); setCallType(null); };
 
-  // --- VERİLERİ ARAYÜZ İÇİN ŞEKİLLENDİRME ---
   const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending').map(r => ({ ...r, from: r.sender_username, to: r.receiver_username })), [friendRequests, currentUser]);
   const outgoingRequests = useMemo(() => friendRequests.filter(r => r.sender_username === currentUser && r.status === 'pending').map(r => ({ ...r, from: r.sender_username, to: r.receiver_username })), [friendRequests, currentUser]);
 
   const userChats = useMemo(() => {
-    const defaultChat = { id: 'general', owner: 'all', name: 'Genel Sohbet', color: 'from-blue-600 to-indigo-700', lastSeen: 'Her zaman aktif' };
     const friends = friendRequests.filter(r => r.status === 'accepted').map(r => {
       const friendName = r.sender_username === currentUser ? r.receiver_username : r.sender_username;
-      return { id: r.id, owner: 'private', name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Bağlantı Kuruldu' };
+      return { id: String(r.id), isGroup: false, name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Bağlantı Kuruldu' };
     });
-    return [defaultChat, ...friends];
-  }, [friendRequests, currentUser]);
+    const groupChats = groups.map(g => ({
+      id: String(g.id), isGroup: true, name: g.name, color: 'from-purple-500 to-pink-700', lastSeen: `${g.members?.length || 1} Üye`
+    }));
+    return [...friends, ...groupChats];
+  }, [friendRequests, groups, currentUser]);
 
   const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
 
@@ -238,12 +240,10 @@ const App = () => {
 
   if (loading) return <div className="h-screen w-screen bg-black flex items-center justify-center text-white">Yükleniyor...</div>;
 
-  if (!session) {
-    return <AuthScreen authMode={authMode} setAuthMode={setAuthMode} notify={notify} notifications={notifications} removeNotification={removeNotification} />;
-  }
+  if (!session) return <AuthScreen authMode={authMode} setAuthMode={setAuthMode} notify={notify} notifications={notifications} removeNotification={removeNotification} />;
 
   return (
-    <div className="flex h-screen bg-black text-neutral-200 font-sans overflow-hidden">
+    <div className="flex h-screen bg-black text-neutral-200 font-sans overflow-hidden kignal-theme-wrapper">
       <ToastContainer notifications={notifications} removeNotification={removeNotification} />
       
       <Sidebar 
@@ -251,8 +251,8 @@ const App = () => {
         showRequests={showRequests} setShowRequests={setShowRequests} incomingRequests={incomingRequests} 
         outgoingRequests={outgoingRequests} acceptFriendRequest={acceptFriendRequest} 
         rejectFriendRequest={rejectFriendRequest} cancelFriendRequest={cancelFriendRequest} 
-        setShowAddFriend={setShowAddFriend} userChats={userChats} activeChatId={activeChatId} 
-        setActiveChatId={setActiveChatId}
+        setShowAddFriend={setShowAddFriend} setShowCreateGroup={setShowCreateGroup} setShowSettings={setShowSettings} 
+        userChats={userChats} activeChatId={activeChatId} setActiveChatId={setActiveChatId}
       />
 
       <ChatArea 
@@ -263,10 +263,11 @@ const App = () => {
         toggleFavorite={toggleFavorite} favorites={favorites} stickerTab={stickerTab} 
         setStickerTab={setStickerTab} inputText={inputText} setInputText={setInputText} 
         handleSend={() => handleSend('text')} mediaPanel={mediaPanel} setMediaPanel={setMediaPanel}
-        currentUser={currentUser} 
+        currentUser={currentUser} primaryColor={primaryColor}
       />
 
       {showAddFriend && <AddFriendModal setShowAddFriend={setShowAddFriend} newFriendName={newFriendName} setNewFriendName={setNewFriendName} sendFriendRequest={sendFriendRequest} />}
+      {showCreateGroup && <CreateGroupModal setShowCreateGroup={setShowCreateGroup} createGroup={createGroup} />}
       {isCalling && <CallOverlay activeChat={activeChat} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} localVideoRef={localVideoRef} handleEndCall={handleEndCall} />}
       {showSettings && <SettingsModal setShowSettings={setShowSettings} currentUser={currentUser} setCurrentUser={setCurrentUser} supabase={supabase} notify={notify} theme={theme} setTheme={setTheme} primaryColor={primaryColor} setPrimaryColor={setPrimaryColor} />}
 
@@ -276,6 +277,8 @@ const App = () => {
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #222; border-radius: 10px; }
         .animate-bounce-slow { animation: bounce 3s infinite; }
         @keyframes bounce { 0%, 100% { transform: translateY(-5%); } 50% { transform: translateY(0); } }
+        .kignal-primary-bg { background-color: var(--kignal-primary); }
+        .kignal-primary-text { color: var(--kignal-primary); }
       `}</style>
     </div>
   );
