@@ -60,6 +60,10 @@ const App = () => {
   const [primaryColor, setPrimaryColor] = useState(() => localStorage.getItem('kignal_color') || '#2563eb');
 
   // --- 2. USEMEMO TANIMLAMALARI (YUKARI ALINDI!) ---
+  // --- USEMEMO TANIMLAMALARI ---
+  // 1. REF EKLİYORUZ (Sonsuz Döngüyü Kırmak İçin)
+  const userChatsRef = useRef([]);
+
   const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
   const outgoingRequests = useMemo(() => friendRequests.filter(r => r.sender_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
 
@@ -77,8 +81,12 @@ const App = () => {
   const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
   const friendsList = useMemo(() => userChats.filter(c => !c.isGroup), [userChats]);
 
+  // 2. userChats değiştiğinde Ref'i sessizce güncelliyoruz (Render tetiklemez)
+  useEffect(() => {
+    userChatsRef.current = userChats;
+  }, [userChats]);
 
-  // --- 3. USEEFFECT KULLANIMLARI (ŞİMDİ SORUNSUZ ÇALIŞACAK) ---
+  // (Session useEffect'i burada kalacak)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -93,16 +101,21 @@ const App = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // 3. ANA VERİ ÇEKME (userChats bağımlılığını sildik, SONSUZ DÖNGÜ BİTTİ!)
   useEffect(() => {
     if (!session || !currentUser) return;
+
     const fetchRequests = async () => {
       const { data } = await supabase.from('friend_requests').select('*').or(`sender_username.eq.${currentUser},receiver_username.eq.${currentUser}`);
       if (data) setFriendRequests(data);
     };
+
     const fetchGroups = async () => {
-      const { data } = await supabase.from('groups').select('*').contains('members', [currentUser]);
+      const { data, error } = await supabase.from('groups').select('*').contains('members', [currentUser]);
+      if (error) console.error("Grup çekme hatası:", error);
       if (data) setGroups(data);
     };
+
     const fetchMessages = async () => {
       const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: true }).limit(500); 
       if (data) {
@@ -114,6 +127,7 @@ const App = () => {
         setMessages(grouped);
       }
     };
+
     fetchRequests(); fetchGroups(); fetchMessages();
 
     const msgChannel = supabase.channel('public-messages')
@@ -124,8 +138,8 @@ const App = () => {
           return { ...prev, [payload.new.chat_id]: [...chatMsgs, payload.new] };
         });
         
-        // userChats artık burada tanımlı olduğu için hata vermeyecek!
-        if (!userChats.some(c => c.id === payload.new.chat_id)) {
+        // Ref kullanarak güncel userChats'e erişiyoruz
+        if (!userChatsRef.current.some(c => c.id === payload.new.chat_id)) {
            fetchGroups(); 
         }
       }).subscribe();
@@ -142,7 +156,7 @@ const App = () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(requestsChannel);
     };
-  }, [session, currentUser, userChats]);
+  }, [session, currentUser]); // <--- DİKKAT: userChats BURADAN SİLİNDİ!
 
   useEffect(() => {
     localStorage.setItem('kignal_theme', theme);
