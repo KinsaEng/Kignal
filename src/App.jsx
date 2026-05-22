@@ -17,6 +17,7 @@ const KATEX_JS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js";
 const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY;
 
 const App = () => {
+  const [loading, setLoading] = useState(true); // Yüklenme durumu
   const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState('login');
@@ -59,6 +60,7 @@ const App = () => {
         const name = session.user.user_metadata?.username || session.user.email.split('@')[0];
         setCurrentUser(name);
       }
+      setLoading(false); // Veri geldi, yükleme bitti
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -233,6 +235,8 @@ const App = () => {
       return <span key={index}>{part}</span>;
     });
   };
+
+  if (loading) return <div className="h-screen w-screen bg-black flex items-center justify-center text-white">Yükleniyor...</div>;
 
   if (!session) {
     return <AuthScreen authMode={authMode} setAuthMode={setAuthMode} notify={notify} notifications={notifications} removeNotification={removeNotification} />;
