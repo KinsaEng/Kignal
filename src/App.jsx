@@ -111,14 +111,13 @@ const App = () => {
     };
 
     const fetchGroups = async () => {
-      // ESKİ HALİ (Bunu sil)
-      // const { data, error } = await supabase.from('groups').select('*').contains('members', [userId]);
+      // session yoksa sorguyu çalıştırma
+      if (!session?.user?.id) return; 
 
-      // YENİ HALİ (Bu doğru olan)
       const { data, error } = await supabase
         .from('groups')
-        .select('*, group_members!inner(user_id)') // group_members tablosu ile birleştir
-        .eq('group_members.user_id', userId); // user_id'si senin olanları getir
+        .select('*, group_members!inner(user_id)') 
+        .eq('group_members.user_id', session.user.id); // userId YERİNE session.user.id KULLANILMALI
         
       if (error) console.error("Grup çekme hatası:", error);
       if (data) setGroups(data);
@@ -259,13 +258,24 @@ const App = () => {
       return;
     }
 
-    const { error } = await supabase.from('friend_requests').insert([{ sender_username: currentUser, receiver_username: newFriendName, status: 'pending' }]);
-    if (error) notify("İstek gönderilemedi: " + error.message, "error");
-    else { 
+    const { data, error } = await supabase
+      .from('friend_requests')
+      .insert([{ sender_username: currentUser, receiver_username: newFriendName, status: 'pending' }])
+      .select() // Veritabanındaki gerçek veriyi (UUID dahil) geri getirir
+      .single();
+
+    if (error) {
+      notify("İstek gönderilemedi: " + error.message, "error");
+    } else { 
       notify("İstek başarıyla gönderildi!", "success"); 
-      setShowAddFriend(false); setNewFriendName(""); 
-      setFriendRequests([...friendRequests, { id: Date.now(), sender_username: currentUser, receiver_username: newFriendName, status: 'pending'}]); 
+      setShowAddFriend(false); 
+      setNewFriendName(""); 
+      if (data) {
+        setFriendRequests([...friendRequests, data]); // Gerçek veriyi state'e ekle
+      }
     }
+
+    
   };
 
   const createGroup = async (groupName, selectedMembers) => {
@@ -350,7 +360,7 @@ const App = () => {
       {showAddFriend && <AddFriendModal setShowAddFriend={setShowAddFriend} newFriendName={newFriendName} setNewFriendName={setNewFriendName} sendFriendRequest={sendFriendRequest} />}
       {showCreateGroup && <CreateGroupModal setShowCreateGroup={setShowCreateGroup} createGroup={createGroup} friendsList={friendsList} />}
       {showRequests && <RequestsModal setShowRequests={setShowRequests} incomingRequests={incomingRequests} outgoingRequests={outgoingRequests} handleAction={handleRequestAction} />}
-      {showChatDetails && <ChatDetailsModal activeChat={activeChat} setShowChatDetails={setShowChatDetails} handleStartCall={handleStartCall} notify={notify} />}
+      {showChatDetails && <ChatDetailsModal activeChat={activeChat} setShowChatDetails={setShowChatDetails} handleStartCall={handleStartCall} handleAction={(type, target, action) => console.log(type, target, action)} notify={notify} />}
       {isCalling && <CallOverlay activeChat={activeChat} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} localVideoRef={localVideoRef} handleEndCall={handleEndCall} />}
       {showSettings && <SettingsModal setShowSettings={setShowSettings} currentUser={currentUser} setCurrentUser={setCurrentUser} supabase={supabase} notify={notify} theme={theme} setTheme={setTheme} primaryColor={primaryColor} setPrimaryColor={setPrimaryColor} />}
     </div>

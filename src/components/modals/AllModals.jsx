@@ -69,16 +69,15 @@ export const RequestsModal = ({ setShowRequests, incomingRequests, outgoingReque
             <div key={req.id} className="flex items-center justify-between bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 p-4 rounded-2xl">
               <span className="text-sm font-bold text-neutral-900 dark:text-white">{req.sender_username}</span>
               <div className="flex gap-2">
-                <button onClick={() => handleAction('request', req.id, 'accept')} className="p-2 bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-500 rounded-lg"><Check className="w-4 h-4" /></button>
-                <button onClick={() => handleAction('request', req.id, 'reject')} className="p-2 bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-500 rounded-lg"><X className="w-4 h-4" /></button>
+                <button onClick={() => handleAction(req.id, 'accept')} className="p-2 bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-500 rounded-lg"><Check className="w-4 h-4" /></button>
+                <button onClick={() => handleAction(req.id, 'reject')} className="p-2 bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-500 rounded-lg"><X className="w-4 h-4" /></button>
               </div>
             </div>
           )))}
           {tab === 'outgoing' && (outgoingRequests.length === 0 ? <p className="text-xs text-neutral-500 text-center py-6">Gönderilmiş istek yok.</p> : outgoingRequests.map(req => (
             <div key={req.id} className="flex items-center justify-between bg-neutral-50 dark:bg-black border border-neutral-200 dark:border-neutral-800 p-4 rounded-2xl">
               <span className="text-sm font-bold text-neutral-900 dark:text-white">{req.receiver_username}</span>
-              <button onClick={() => handleAction('request', req.id, 'cancel')} className="flex items-center gap-2 px-3 py-1.5 bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500 rounded-lg text-xs font-bold"><XCircle className="w-4 h-4" /> İPTAL ET</button>
-            </div>
+                <button onClick={() => handleAction(req.id, 'cancel')} className="flex items-center gap-2 px-3 py-1.5 bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-500 rounded-lg text-xs font-bold"><XCircle className="w-4 h-4" /> İPTAL ET</button>            </div>
           )))}
         </div>
       </div>
