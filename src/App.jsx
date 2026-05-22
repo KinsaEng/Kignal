@@ -5,10 +5,17 @@ import Sidebar from './components/layout/Sidebar';
 import ChatArea from './components/chat/ChatArea';
 import AddFriendModal from './components/modals/AddFriendModal';
 import CallOverlay from './components/modals/CallOverlay';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const KATEX_CSS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css";
 const KATEX_JS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js";
-const GIPHY_API_KEY = "giphyapi";
+
+const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY;
 
 const DEFAULT_USERS = [
   { user: "admin", pass: "1234", email: "admin@kignal.com" },

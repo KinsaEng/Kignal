@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Smile, Gift, Sticker, X, Search } from 'lucide-react';
-const GIPHY_API_KEY = process.env.REACT_APP_GIPHY_API_KEY;
+
+const GIPHY_API_KEY = import.meta.env.VITE_GIPHY_API_KEY;
+
 const EMOJI_LIST = ["😀", "😂", "🥰", "😎", "🤔", "🙄", "🔥", "✨", "🚀", "💎", "🌈", "🍕", "🎮", "👾", "❤️", "🙌", "🥳", "😭", "😡", "😴", "🧠", "🧬", "🧪", "🌍", "🍦", "🎸", "📸", "🧘", "👑", "🦄"];
 const STICKER_LIST = ["🚀", "🔥", "💎", "🌈", "👻", "🤖", "🍕", "🎮", "👾", "🕶️", "⚡", "🎆", "✨", "🧬", "🧪", "🪐"];
 
