@@ -14,7 +14,7 @@ const ChatArea = ({
   activeChat, activeChatId, handleStartCall, messages, scrollRef, renderMessageContent, 
   showMediaPanel, setShowMediaPanel, gifSearch, setGifSearch, gifResults, 
   sendMediaMessage, toggleFavorite, favorites, stickerTab, setStickerTab, 
-  inputText, setInputText, handleSend, mediaPanel, setMediaPanel
+  inputText, setInputText, handleSend, mediaPanel, setMediaPanel, currentUser
 }) => {
 
 // ChatArea.jsx içinde return'den hemen önceye yapıştır:
