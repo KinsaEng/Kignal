@@ -16,7 +16,8 @@ const ChatArea = ({
 }) => {
 const [showAttachMenu, setShowAttachMenu] = useState(false);
 const fileInputRef = React.useRef(null);
-
+const [isTyping, setIsTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
 const handleFileMenuClick = (type) => {
 setShowAttachMenu(false);
 if (type === 'poll') {
@@ -41,6 +42,46 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
         scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages, activeChatId, scrollRef]);
+
+  useEffect(() => {
+    if (!activeChatId) return;
+
+    // Sadece bu sohbete özel bir yayın kanalı oluştur
+    const typingChannel = supabase.channel(`typing-room-${activeChatId}`)
+      .on('broadcast', { event: 'typing' }, (payload) => {
+        // Gelen sinyal benim dışımda birinden (karşıdan) geliyorsa animasyonu tetikle
+        if (payload.payload.user !== currentUser) {
+          setIsTyping(payload.payload.isTyping);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(typingChannel);
+    };
+  }, [activeChatId, currentUser]);
+
+  // Input değiştikçe karşıya "yazıyor" sinyali gönderecek fonksiyon
+  const handleInputChange = (e) => {
+    setInputText(e.target.value);
+
+    // Yazıyor sinyalini gönder
+    supabase.channel(`typing-room-${activeChatId}`).send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { user: currentUser, isTyping: true }
+    });
+
+    // Kullanıcı 2 saniye boyunca tuşa basmazsa "yazıyor" sinyalini kapat
+    clearTimeout(typingTimeoutRef.current);
+    typingTimeoutRef.current = setTimeout(() => {
+      supabase.channel(`typing-room-${activeChatId}`).send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: { user: currentUser, isTyping: false }
+      });
+    }, 2000);
+  };
 
   if (!activeChat) {
     return (
@@ -177,12 +218,19 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
             {/* Gizli Input */}
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} />
           </div>
-
+            {/* Mesaj listesinin sonu ile textarea alanı arasında bir yere yerleştir */}
+            {isTyping && (
+            <div className="flex items-center gap-1.5 p-3 px-5 bg-neutral-200 dark:bg-neutral-800/80 rounded-2xl rounded-bl-none w-fit mb-4 ml-4 shadow-sm animate-in fade-in duration-300">
+                <span className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+            </div>
+            )}
           <div className="flex-1 bg-neutral-100 dark:bg-neutral-900/50 border border-neutral-200 dark:border-neutral-800/80 rounded-[28px] px-6 flex items-end relative min-h-[50px]">
             <textarea 
               rows="1" placeholder="Mesaj yazın..."
               className="w-full bg-transparent py-4 focus:outline-none resize-none text-sm text-neutral-900 dark:text-white custom-scrollbar max-h-32"
-              value={inputText} onChange={e => setInputText(e.target.value)}
+              value={inputText} onChange={handleInputChange}
               onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
             />
             <button onClick={() => setMediaPanel(mediaPanel ? null : 'emoji')} className={`p-3 mb-1 rounded-xl transition-all active:scale-90 ${mediaPanel ? 'kignal-primary-text bg-white/5' : 'text-neutral-500 hover:text-white'}`}>
