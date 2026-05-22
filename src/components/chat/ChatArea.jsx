@@ -12,7 +12,7 @@ const ChatArea = ({
   activeChat, activeChatId, handleStartCall, messages, scrollRef, renderMessageContent, 
   showMediaPanel, setShowMediaPanel, gifSearch, setGifSearch, gifResults, 
   sendMediaMessage, toggleFavorite, favorites, stickerTab, setStickerTab, 
-  inputText, setInputText, handleSend, mediaPanel, setMediaPanel, currentUser, onHeaderClick
+  inputText, setInputText, handleSend, mediaPanel, setMediaPanel, currentUser, onHeaderClick, primaryColor
 }) => {
 const [showAttachMenu, setShowAttachMenu] = useState(false);
 const fileInputRef = React.useRef(null);
