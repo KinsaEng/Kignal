@@ -245,70 +245,38 @@ const App = () => {
   const sendMediaMessage = (type, content) => handleSend(type, content);
 
 
-  const sendFriendRequest = async () => {
-    if (!newFriendName.trim() || newFriendName === currentUser) return;
-    
-    // HATA DÜZELTMESİ: Eğer 'profiles' tablosu RLS'e takılırsa uygulama çökmesin
-    // ESKİ HALİ: .single() hata fırlatır eğer bulamazsa.
-    // const { data, error } = await supabase.from('profiles').select('*').eq('username', newFriendName).single();
+ const sendFriendRequest = async () => {
+    if (!newFriendName.trim()) return notify("Lütfen bir kullanıcı adı girin.", "error");
+    if (newFriendName === currentUser) return notify("Kendinize istek gönderemezsiniz.", "error");
 
-    // YENİ HALİ: .maybeSingle() bulamazsa hata yerine "null" döndürür, uygulama çökmez.
-    const { data: userExists, error: userError } = await supabase
-      .from('profiles')
-      .select('*')
-      .ilike('username', newFriendName) // Büyük/küçük harf duyarlılığını kaldırır
-      .maybeSingle();
-
-    if (userError) {
-        // Gerçek bir veritabanı hatası varsa buraya düşer
-        console.error(userError);
-        return;
-    }
-
-    if (!userExists) {
-        // Kullanıcı yoksa, artık hata almayacaksın, buraya düşeceksin
-        notify("Kullanıcı bulunamadı!", "error");
-        return;
-    }
-
-    if (userError && userError.code !== 'PGRST116') {
-      notify("Sistem Hatası: " + userError.message, "error");
-      return;
-    }
-
-    if (!userExists) {
-      notify("Böyle bir kullanıcı bulunamadı (Büyük/Küçük harf duyarlı olabilir)!", "error");
-      return;
-    }
-    
-    // 2. Zaten istek atılmış mı kontrolü
-    const exists = friendRequests.find(r => 
-      (r.sender_username === currentUser && r.receiver_username === newFriendName) || 
-      (r.sender_username === newFriendName && r.receiver_username === currentUser)
+    // 1. Kontrol: Zaten arkadaş mıyız? (Hata vermemesi için güvenli kontrol)
+    const isAlreadyFriend = friendsList && friendsList.some(f => 
+      (typeof f === 'string' ? f : (f.username || f.name)) === newFriendName
     );
-    if (exists) {
-      notify("Bu kullanıcıyla zaten bir bağınız var!", "error");
-      return;
+    if (isAlreadyFriend) return notify("Bu kişiyle zaten arkadaşsınız.", "error");
+
+    // 2. Kontrol: Bekleyen (Gelen veya Giden) bir istek zaten var mı?
+    const { data: existingRequests } = await supabase
+      .from('friend_requests')
+      .select('*')
+      .or(`and(sender.eq.${currentUser},receiver.eq.${newFriendName}),and(sender.eq.${newFriendName},receiver.eq.${currentUser})`);
+
+    if (existingRequests && existingRequests.length > 0) {
+      return notify("Bu kişiyle zaten bekleyen bir arkadaşlık işleminiz var.", "error");
     }
 
-    const { data, error } = await supabase
+    // 3. Her şey temizse isteği gönder
+    const { error } = await supabase
       .from('friend_requests')
-      .insert([{ sender_username: currentUser, receiver_username: newFriendName, status: 'pending' }])
-      .select() // Veritabanındaki gerçek veriyi (UUID dahil) geri getirir
-      .single();
+      .insert([{ sender: currentUser, receiver: newFriendName, status: 'pending' }]);
 
     if (error) {
       notify("İstek gönderilemedi: " + error.message, "error");
-    } else { 
-      notify("İstek başarıyla gönderildi!", "success"); 
-      setShowAddFriend(false); 
-      setNewFriendName(""); 
-      if (data) {
-        setFriendRequests([...friendRequests, data]); // Gerçek veriyi state'e ekle
-      }
+    } else {
+      notify("Arkadaşlık isteği başarıyla gönderildi!", "success");
+      setShowAddFriend(false);
+      setNewFriendName("");
     }
-
-    
   };
 
   const createGroup = async (groupName, selectedMembers) => {

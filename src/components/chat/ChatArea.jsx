@@ -1,55 +1,22 @@
-import React, { useEffect, useState } from 'react';
-import { ShieldCheck, Phone, Video, Monitor, Search, Heart, Smile, Sparkles, X, Send, Plus, Image, File, BarChart2, Zap } from 'lucide-react';
-import MediaPicker from '../shared/MediaPicker';
-
-const STICKER_PACKS = {
-  classic: ["🚀", "🔥", "💎", "🌈", "👻", "🤖", "🍕", "🎮"],
-  neon: ["⚡", "🎆", "✨", "🧬", "🧪", "🪐", "👾", "🕶️"],
-  animated: ["❤️", "😂", "😮", "😡", "🥳", "🤔", "😴", "🙌"]
-};
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '../../lib/supabaseClient'; // Kendi supabaseClient dosya yoluna göre düzelt
 
 const ChatArea = ({ 
   activeChat, activeChatId, handleStartCall, messages, scrollRef, renderMessageContent, 
   showMediaPanel, setShowMediaPanel, gifSearch, setGifSearch, gifResults, 
   sendMediaMessage, toggleFavorite, favorites, stickerTab, setStickerTab, 
-  inputText, setInputText, handleSend, mediaPanel, setMediaPanel, currentUser, onHeaderClick, primaryColor, useRef
+  inputText, setInputText, handleSend, mediaPanel, setMediaPanel, currentUser, onHeaderClick, primaryColor
 }) => {
-const [showAttachMenu, setShowAttachMenu] = useState(false);
-const fileInputRef = React.useRef(null);
-const [isTyping, setIsTyping] = useState(false);
+
+  const [isTyping, setIsTyping] = useState(false);
   const typingTimeoutRef = useRef(null);
-const handleFileMenuClick = (type) => {
-setShowAttachMenu(false);
-if (type === 'poll') {
-// Poll modalını açacak state'i tetikle
-return;
-}
-// Resim veya dosya seçimi için gizli input'u tıkla
-fileInputRef.current.click();
-};
 
-const handleFileUpload = async (e) => {
-const file = e.target.files[0];
-if (!file) return;
-
-// Burada Supabase Storage'a yükleme yapacağız (bknz. sonraki adım)
-// Şimdilik sadece bildirim verelim:
-alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`);
-};
-
-  useEffect(() => {
-    if (scrollRef && scrollRef.current) {
-        scrollRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, activeChatId, scrollRef]);
-
+  // 1. Karşı tarafın yazıp yazmadığını dinleyen effect
   useEffect(() => {
     if (!activeChatId) return;
 
-    // Sadece bu sohbete özel bir yayın kanalı oluştur
     const typingChannel = supabase.channel(`typing-room-${activeChatId}`)
       .on('broadcast', { event: 'typing' }, (payload) => {
-        // Gelen sinyal benim dışımda birinden (karşıdan) geliyorsa animasyonu tetikle
         if (payload.payload.user !== currentUser) {
           setIsTyping(payload.payload.isTyping);
         }
@@ -61,18 +28,21 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
     };
   }, [activeChatId, currentUser]);
 
-  // Input değiştikçe karşıya "yazıyor" sinyali gönderecek fonksiyon
+  // 2. Kendi yazma durumumuzu karşıya gönderen ve inputu güncelleyen fonksiyon
   const handleInputChange = (e) => {
-    setInputText(e.target.value);
+    // Güvenlik kontrolü: App.jsx'ten setInputText gelmediyse uygulama çökmesin
+    if (typeof setInputText === 'function') {
+      setInputText(e.target.value);
+    } else {
+      console.error("HATA: setInputText prop olarak ChatArea'ya gelmedi!");
+    }
 
-    // Yazıyor sinyalini gönder
     supabase.channel(`typing-room-${activeChatId}`).send({
       type: 'broadcast',
       event: 'typing',
       payload: { user: currentUser, isTyping: true }
     });
 
-    // Kullanıcı 2 saniye boyunca tuşa basmazsa "yazıyor" sinyalini kapat
     clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
       supabase.channel(`typing-room-${activeChatId}`).send({
@@ -82,7 +52,6 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
       });
     }, 2000);
   };
-
   if (!activeChat) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center bg-[#030303] text-neutral-600 p-12 text-center">
