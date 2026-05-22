@@ -71,7 +71,7 @@ if (!activeChat) {
           </div>
         ) : (
           (messages[activeChatId] || []).map(m => (
-            <div key={m.id} className={`flex ${m.sender === 'me' ? 'justify-end' : 'justify-start'}`}>
+            <div key={m.id} className={`flex ${m.sender === currentUser ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[70%] ${m.sender === 'me' ? 'items-end' : 'items-start'} flex flex-col gap-2`}>
                 <div className={`p-1 rounded-[28px] overflow-hidden ${m.type === 'text' ? 'px-6 py-4' : ''} ${m.sender === 'me' ? 'bg-blue-600 text-white rounded-br-none shadow-xl shadow-blue-900/20' : 'bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-bl-none shadow-xl'}`}>
                   {renderMessageContent(m)}
