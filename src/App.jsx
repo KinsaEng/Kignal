@@ -179,6 +179,39 @@ const App = () => {
     const script = document.createElement('script'); script.src = KATEX_JS; script.async = true; script.onload = () => setKatexLoaded(true); document.head.appendChild(script);
   }, []);
 
+  // App.jsx içine eklenecek
+  useEffect(() => {
+    // Session veya currentUser yoksa dinlemeye başlama
+    if (!session?.user?.id) return;
+
+    // messages tablosundaki INSERT (yeni mesaj ekleme) işlemlerini dinle
+    const messagesChannel = supabase
+      .channel('realtime-messages')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          const newMessage = payload.new;
+          
+          // Yeni mesaj geldiğinde state'i güncelle (Sayfa yenilemeye gerek kalmaz)
+          // Not: "messages" state'ini nasıl tuttuğuna göre burayı ufak ayarlaman gerekebilir.
+          // Eğer dizi olarak tutuyorsan: setMessages(prev => [...prev, newMessage]);
+          // Eğer obje olarak tutuyorsan (benim gördüğüm kadarıyla obje tutuyorsun):
+          setMessages(prev => ({
+            ...prev,
+            [newMessage.id]: newMessage
+          }));
+        }
+      )
+      .subscribe();
+
+    // Bileşen kapandığında kanalı temizle
+    return () => {
+      supabase.removeChannel(messagesChannel);
+    };
+  }, [session]); // Session değiştiğinde tetiklensin
+
+
   const notify = (message, type = 'info') => {
     const id = Date.now();
     setNotifications(prev => [...prev, { id, message, type }]);
