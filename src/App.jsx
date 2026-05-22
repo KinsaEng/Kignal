@@ -68,6 +68,39 @@ const App = () => {
   const scrollRef = useRef(null);
   const localVideoRef = useRef(null);
 
+  // App.jsx içerisindeki mevcut useEffect'lerinin yanına bunu ekle
+useEffect(() => {
+  // 1. Mevcut mesajları çek
+  const fetchMessages = async () => {
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('chat_id', 'general') // Sadece genel odadaki mesajlar
+      .order('created_at', { ascending: true });
+    
+    if (data) setMessages(data);
+  };
+
+  fetchMessages();
+
+  // 2. Yeni mesajları dinle (Realtime)
+  const channel = supabase
+    .channel('public:messages')
+    .on('postgres_changes', { 
+      event: 'INSERT', 
+      schema: 'public', 
+      table: 'messages',
+      filter: 'chat_id=eq.general' // Sadece genel oda mesajları
+    }, payload => {
+      setMessages(prev => [...prev, payload.new]);
+    })
+    .subscribe();
+
+  return () => supabase.removeChannel(channel);
+}, []);
+
+
+
   useEffect(() => {
     localStorage.setItem('kignal_users', JSON.stringify(registeredUsers));
   }, [registeredUsers]);
@@ -176,19 +209,22 @@ const App = () => {
     }
   };
 
-  const handleSend = (type = 'text', content = inputText) => {
-    if (!content.trim() && type === 'text') return;
-    if (!activeChatId) return;
+  const handleSend = async () => {
+    if (!inputText.trim()) return;
 
-    const newMessage = {
-      id: Date.now(), type, content, sender: 'me',
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-    setMessages(prev => ({
-      ...prev, [activeChatId]: [...(prev[activeChatId] || []), newMessage]
-    }));
-    if (type === 'text') setInputText("");
-    setMediaPanel(null);
+    // Supabase'e kaydet
+    const { error } = await supabase
+      .from('messages')
+      .insert([
+        { content: inputText, sender: currentUser, chat_id: 'general' }
+      ]);
+
+    if (error) {
+      console.error("Mesaj gönderilemedi:", error);
+      notify("Mesaj gönderilemedi!", "error");
+    } else {
+      setInputText(""); // Başarılıysa inputu temizle
+    }
   };
 
   const sendMediaMessage = (type, content) => {
