@@ -209,8 +209,8 @@ const App = () => {
     if (!newFriendName.trim() || newFriendName === currentUser) return;
     
     // HATA DÜZELTMESİ: Eğer 'profiles' tablosu RLS'e takılırsa uygulama çökmesin
-    const { data: userExists, error: userError } = await supabase.from('profiles').select('username').eq('username', newFriendName).single();
-    
+    const { data: userExists, error: userError } = await supabase.from('profiles').select('username').ilike('username', newFriendName).maybeSingle();
+
     if (userError && userError.code !== 'PGRST116') {
       notify("Sistem Hatası: " + userError.message, "error");
       return;
