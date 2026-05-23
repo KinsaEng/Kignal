@@ -11,7 +11,7 @@ import {
   RequestsModal, 
   ChatDetailsModal 
 } from './components/modals/AllModals';
-import { supabase } from './lib/supabaseClient'; // Eğer farklıysa kendi import yolunu koru
+import { supabase } from './lib/supabaseClient'; 
 
 const KATEX_CSS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css";
 const KATEX_JS = "https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js";
@@ -69,11 +69,17 @@ const App = () => {
   const userChats = useMemo(() => {
     const friends = friendRequests.filter(r => r.status === 'accepted').map(r => {
       const friendName = r.sender_username === currentUser ? r.receiver_username : r.sender_username;
-      return { id: friendName, isGroup: false, name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Çevrimiçi' };
+      
+      // ÇÖZÜM 1: İki kullanıcının da "AYNI" odaya bakmasını garanti altına alan ortak chat_id mantığı
+      const sharedChatId = [currentUser, friendName].sort().join('_');
+
+      return { id: sharedChatId, isGroup: false, name: friendName, color: 'from-emerald-500 to-teal-700', lastSeen: 'Çevrimiçi' };
     });
+    
     const groupChats = groups.map(g => ({
       id: String(g.id), isGroup: true, name: g.name, color: 'from-purple-500 to-pink-700', lastSeen: `${g.members?.length || 1} Üye`, members: g.members
     }));
+    
     return [...friends, ...groupChats];
   }, [friendRequests, groups, currentUser]);
 
@@ -128,7 +134,6 @@ const App = () => {
 
     fetchRequests(); fetchGroups(); fetchMessages();
 
-    // TEMİZLENMİŞ VE HATASIZ REALTIME
     const channel = supabase.channel('realtime-kignal')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         setMessages(prev => {
@@ -139,7 +144,7 @@ const App = () => {
         });
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, (payload) => {
-        fetchRequests(); // Hatalı setUserChats silindi, artık en doğru şekilde API'den çekip listeyi güncelliyoruz.
+        fetchRequests(); 
         if (payload.eventType === 'INSERT' && payload.new.receiver_username === currentUser) {
           notify("Yeni bir arkadaşlık isteği aldınız!", "info");
         } else if (payload.eventType === 'UPDATE' && payload.new.status === 'accepted') {
@@ -172,7 +177,6 @@ const App = () => {
     };
   }, [session, currentUser]);
 
-  // CSS Theme & Katex
   useEffect(() => {
     localStorage.setItem('kignal_theme', theme);
     const root = window.document.documentElement;
@@ -194,11 +198,14 @@ const App = () => {
   };
   const removeNotification = (id) => setNotifications(prev => prev.filter(n => n.id !== id));
 
-  // Chat Actions (DOĞRU UNFRIEND MANTIĞI EKLENDİ)
+  // ÇÖZÜM 2: Supabase string parse hatalarını önleyen kesin silme mantığı
   const handleAction = async (type, targetId, action) => {
     if (type === 'chat') {
       if (action === 'unfriend') {
-        await supabase.from('friend_requests').delete().or(`and(sender_username.eq.${currentUser},receiver_username.eq.${targetId}),and(sender_username.eq.${targetId},receiver_username.eq.${currentUser})`);
+        // İki olasılığı da ayrı ayrı temiz bir şekilde siliyoruz
+        await supabase.from('friend_requests').delete().match({ sender_username: currentUser, receiver_username: targetId });
+        await supabase.from('friend_requests').delete().match({ sender_username: targetId, receiver_username: currentUser });
+        
         fetchRequests();
         setActiveChatId(null);
         notify("Arkadaşlıktan çıkarıldı.", "success");
@@ -206,7 +213,10 @@ const App = () => {
       }
       if (action === 'block') {
         await supabase.from('blocked_users').insert([{ blocker_username: currentUser, blocked_username: targetId }]);
-        await supabase.from('friend_requests').delete().or(`and(sender_username.eq.${currentUser},receiver_username.eq.${targetId}),and(sender_username.eq.${targetId},receiver_username.eq.${currentUser})`);
+        
+        await supabase.from('friend_requests').delete().match({ sender_username: currentUser, receiver_username: targetId });
+        await supabase.from('friend_requests').delete().match({ sender_username: targetId, receiver_username: currentUser });
+        
         fetchRequests();
         setActiveChatId(null);
         notify("Kullanıcı engellendi.", "error");
@@ -222,7 +232,6 @@ const App = () => {
     notify(action === 'accept' ? "İstek kabul edildi!" : (action === 'reject' ? "İstek reddedildi." : "İstek iptal edildi."), action === 'accept' ? 'success' : 'info');
   };
 
-  // Sending Messages & Call Handling
   const handleTypingChange = (text) => {
       setInputText(text);
       if (typingChannelRef.current && activeChatId) {
@@ -345,7 +354,6 @@ const App = () => {
       {showCreateGroup && <CreateGroupModal setShowCreateGroup={setShowCreateGroup} createGroup={createGroup} friendsList={friendsList} />}
       {showRequests && <RequestsModal setShowRequests={setShowRequests} incomingRequests={incomingRequests} outgoingRequests={outgoingRequests} handleAction={handleRequestAction} />}
       
-      {/* BURADAKİ CONSOLE.LOG HATASI DÜZELTİLDİ. ARTIK GERÇEK handleAction ÇALIŞIYOR */}
       {showChatDetails && <ChatDetailsModal activeChat={activeChat} setShowChatDetails={setShowChatDetails} handleStartCall={handleStartCall} handleAction={handleAction} notify={notify} />}
       
       {isCalling && <CallOverlay activeChat={activeChat} currentUser={currentUser} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} handleEndCall={handleEndCall} supabase={supabase} />}
