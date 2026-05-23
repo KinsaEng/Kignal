@@ -59,9 +59,11 @@ const App = () => {
   const [theme, setTheme] = useState(() => localStorage.getItem('kignal_theme') || 'system');
   const [primaryColor, setPrimaryColor] = useState(() => localStorage.getItem('kignal_color') || '#2563eb');
 
-  // --- 2. USEMEMO TANIMLAMALARI (YUKARI ALINDI!) ---
-  // --- USEMEMO TANIMLAMALARI ---
-  // 1. REF EKLİYORUZ (Sonsuz Döngüyü Kırmak İçin)
+  // "Yazıyor..." durumu için state ve refler
+  const [typingUsers, setTypingUsers] = useState({});
+  const typingChannelRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  
   const userChatsRef = useRef([]);
 
   const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
@@ -81,12 +83,10 @@ const App = () => {
   const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
   const friendsList = useMemo(() => userChats.filter(c => !c.isGroup), [userChats]);
 
-  // 2. userChats değiştiğinde Ref'i sessizce güncelliyoruz (Render tetiklemez)
   useEffect(() => {
     userChatsRef.current = userChats;
   }, [userChats]);
 
-  // (Session useEffect'i burada kalacak)
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -101,7 +101,6 @@ const App = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 3. ANA VERİ ÇEKME (userChats bağımlılığını sildik, SONSUZ DÖNGÜ BİTTİ!)
   useEffect(() => {
     if (!session || !currentUser) return;
 
@@ -111,13 +110,11 @@ const App = () => {
     };
 
     const fetchGroups = async () => {
-      // session yoksa sorguyu çalıştırma
       if (!session?.user?.id) return; 
-
       const { data, error } = await supabase
         .from('groups')
         .select('*, group_members!inner(user_id)') 
-        .eq('group_members.user_id', session.user.id); // userId YERİNE session.user.id KULLANILMALI
+        .eq('group_members.user_id', session.user.id); 
         
       if (error) console.error("Grup çekme hatası:", error);
       if (data) setGroups(data);
@@ -128,8 +125,9 @@ const App = () => {
       if (data) {
         const grouped = {};
         data.forEach(m => {
-          if (!grouped[m.chat_id]) grouped[m.chat_id] = [];
-          grouped[m.chat_id].push(m);
+          const chatId = String(m.chat_id);
+          if (!grouped[chatId]) grouped[chatId] = [];
+          grouped[chatId].push(m);
         });
         setMessages(grouped);
       }
@@ -137,19 +135,39 @@ const App = () => {
 
     fetchRequests(); fetchGroups(); fetchMessages();
 
+    // MESAJ KANALI: Anlık mesajların düşmesini sağlayan alan
     const msgChannel = supabase.channel('public-messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
         setMessages(prev => {
-          const chatMsgs = prev[payload.new.chat_id] || [];
-          if (chatMsgs.some(m => m.id === payload.new.id)) return prev;
-          return { ...prev, [payload.new.chat_id]: [...chatMsgs, payload.new] };
+          const chatId = String(payload.new.chat_id);
+          const chatMsgs = prev[chatId] || [];
+          if (chatMsgs.some(m => String(m.id) === String(payload.new.id))) return prev;
+          return { ...prev, [chatId]: [...chatMsgs, payload.new] };
         });
         
-        // Ref kullanarak güncel userChats'e erişiyoruz
-        if (!userChatsRef.current.some(c => c.id === payload.new.chat_id)) {
+        if (!userChatsRef.current.some(c => String(c.id) === String(payload.new.chat_id))) {
            fetchGroups(); 
         }
       }).subscribe();
+
+    // YAZIYOR... KANALI: Anlık . . . animasyonu için yayın (broadcast) sistemi
+    const typingChannel = supabase.channel('typing-room', {
+      config: { broadcast: { self: false } }
+    });
+
+    typingChannel
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        // Eğer grupta veya özel sohbette başka biri yazıyorsa durumu yakala
+        setTypingUsers(prev => ({
+           ...prev,
+           [payload.chat_id]: payload.isTyping ? payload.username : null
+        }));
+      })
+      .subscribe((status) => {
+         if(status === 'SUBSCRIBED') {
+            typingChannelRef.current = typingChannel;
+         }
+      });
 
     const requestsChannel = supabase.channel('public-requests')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
@@ -162,8 +180,10 @@ const App = () => {
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(requestsChannel);
+      supabase.removeChannel(typingChannel);
+      typingChannelRef.current = null;
     };
-  }, [session, currentUser]); // <--- DİKKAT: userChats BURADAN SİLİNDİ!
+  }, [session, currentUser]);
 
   useEffect(() => {
     localStorage.setItem('kignal_theme', theme);
@@ -179,39 +199,6 @@ const App = () => {
     const script = document.createElement('script'); script.src = KATEX_JS; script.async = true; script.onload = () => setKatexLoaded(true); document.head.appendChild(script);
   }, []);
 
-  // App.jsx içine eklenecek
-  useEffect(() => {
-    // Session veya currentUser yoksa dinlemeye başlama
-    if (!session?.user?.id) return;
-
-    // messages tablosundaki INSERT (yeni mesaj ekleme) işlemlerini dinle
-    const messagesChannel = supabase
-      .channel('realtime-messages')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          const newMessage = payload.new;
-          
-          // Yeni mesaj geldiğinde state'i güncelle (Sayfa yenilemeye gerek kalmaz)
-          // Not: "messages" state'ini nasıl tuttuğuna göre burayı ufak ayarlaman gerekebilir.
-          // Eğer dizi olarak tutuyorsan: setMessages(prev => [...prev, newMessage]);
-          // Eğer obje olarak tutuyorsan (benim gördüğüm kadarıyla obje tutuyorsun):
-          setMessages(prev => ({
-            ...prev,
-            [newMessage.id]: newMessage
-          }));
-        }
-      )
-      .subscribe();
-
-    // Bileşen kapandığında kanalı temizle
-    return () => {
-      supabase.removeChannel(messagesChannel);
-    };
-  }, [session]); // Session değiştiğinde tetiklensin
-
-
   const notify = (message, type = 'info') => {
     const id = Date.now();
     setNotifications(prev => [...prev, { id, message, type }]);
@@ -219,14 +206,48 @@ const App = () => {
   };
   const removeNotification = (id) => setNotifications(prev => prev.filter(n => n.id !== id));
 
-  // HIZLI MESAJ (Optimistic UI) ÇÖZÜMÜ
+  // KULLANICI YAZARKEN TETİKLENEN YENİ FONKSİYON
+  const handleTypingChange = (text) => {
+      setInputText(text);
+
+      if (typingChannelRef.current && activeChatId) {
+          // Yazmaya başladığını herkese bildir
+          typingChannelRef.current.send({
+              type: 'broadcast',
+              event: 'typing',
+              payload: { chat_id: String(activeChatId), username: currentUser, isTyping: text.length > 0 }
+          });
+
+          // 2 saniye boyunca hiçbir şeye basmazsa "yazıyor" durumunu kaldır
+          if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+          typingTimeoutRef.current = setTimeout(() => {
+               if (typingChannelRef.current) {
+                   typingChannelRef.current.send({
+                       type: 'broadcast',
+                       event: 'typing',
+                       payload: { chat_id: String(activeChatId), username: currentUser, isTyping: false }
+                   });
+               }
+          }, 2000);
+      }
+  };
+
   const handleSend = async (type = 'text', mediaContent = null) => {
     const contentToSend = mediaContent || inputText;
     if (!contentToSend.trim() || !activeChatId) return;
 
     setInputText(""); setMediaPanel(null); setShowMediaPanel(null);
 
-    // Veritabanına anında yaz ve geri dönen gerçek veriyi state'e ekle
+    // Mesajı gönderdiğinde yazıyor durumunu iptal et
+    if (typingChannelRef.current) {
+        typingChannelRef.current.send({
+            type: 'broadcast',
+            event: 'typing',
+            payload: { chat_id: String(activeChatId), username: currentUser, isTyping: false }
+        });
+    }
+    if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+
     const { data, error } = await supabase.from('messages').insert([{ 
       content: contentToSend, sender_username: currentUser, chat_id: activeChatId, type: type 
     }]).select('*').single();
@@ -235,47 +256,58 @@ const App = () => {
       notify("Mesaj gönderilemedi!", "error");
     } else if (data) {
       setMessages(prev => {
-        const currentChatMsgs = prev[activeChatId] || [];
-        if (currentChatMsgs.some(m => m.id === data.id)) return prev;
-        return { ...prev, [activeChatId]: [...currentChatMsgs, data] };
+        const chatId = String(activeChatId);
+        const currentChatMsgs = prev[chatId] || [];
+        if (currentChatMsgs.some(m => String(m.id) === String(data.id))) return prev;
+        return { ...prev, [chatId]: [...currentChatMsgs, data] };
       });
     }
   };
 
   const sendMediaMessage = (type, content) => handleSend(type, content);
 
-
- const sendFriendRequest = async () => {
-    if (!newFriendName.trim()) return notify("Lütfen bir kullanıcı adı girin.", "error");
-    if (newFriendName === currentUser) return notify("Kendinize istek gönderemezsiniz.", "error");
-
-    // 1. Kontrol: Zaten arkadaş mıyız? (Hata vermemesi için güvenli kontrol)
-    const isAlreadyFriend = friendsList && friendsList.some(f => 
-      (typeof f === 'string' ? f : (f.username || f.name)) === newFriendName
-    );
-    if (isAlreadyFriend) return notify("Bu kişiyle zaten arkadaşsınız.", "error");
-
-    // 2. Kontrol: Bekleyen (Gelen veya Giden) bir istek zaten var mı?
-    const { data: existingRequests } = await supabase
-      .from('friend_requests')
+  const sendFriendRequest = async () => {
+    if (!newFriendName.trim() || newFriendName === currentUser) return;
+    
+    const { data: userExists, error: userError } = await supabase
+      .from('profiles')
       .select('*')
-      .or(`and(sender.eq.${currentUser},receiver.eq.${newFriendName}),and(sender.eq.${newFriendName},receiver.eq.${currentUser})`);
+      .ilike('username', newFriendName) 
+      .maybeSingle();
 
-    if (existingRequests && existingRequests.length > 0) {
-      return notify("Bu kişiyle zaten bekleyen bir arkadaşlık işleminiz var.", "error");
+    if (userError) {
+        console.error(userError);
+        return;
+    }
+    if (!userExists) {
+        notify("Böyle bir kullanıcı bulunamadı (Büyük/Küçük harf duyarlı olabilir)!", "error");
+        return;
+    }
+    
+    const exists = friendRequests.find(r => 
+      (r.sender_username === currentUser && r.receiver_username === newFriendName) || 
+      (r.sender_username === newFriendName && r.receiver_username === currentUser)
+    );
+    if (exists) {
+      notify("Bu kullanıcıyla zaten bir bağınız var!", "error");
+      return;
     }
 
-    // 3. Her şey temizse isteği gönder
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('friend_requests')
-      .insert([{ sender: currentUser, receiver: newFriendName, status: 'pending' }]);
+      .insert([{ sender_username: currentUser, receiver_username: newFriendName, status: 'pending' }])
+      .select() 
+      .single();
 
     if (error) {
       notify("İstek gönderilemedi: " + error.message, "error");
-    } else {
-      notify("Arkadaşlık isteği başarıyla gönderildi!", "success");
-      setShowAddFriend(false);
-      setNewFriendName("");
+    } else { 
+      notify("İstek başarıyla gönderildi!", "success"); 
+      setShowAddFriend(false); 
+      setNewFriendName(""); 
+      if (data) {
+        setFriendRequests([...friendRequests, data]); 
+      }
     }
   };
 
@@ -283,7 +315,7 @@ const App = () => {
     if (!groupName.trim()) return;
     const members = [currentUser, ...selectedMembers];
     const newGroup = { id: `group_${Date.now()}`, name: groupName, members: members, isGroup: true };
-    setGroups([...groups, newGroup]); // Supabase gruplarına bağladığında update et
+    setGroups([...groups, newGroup]); 
     setActiveChatId(newGroup.id);
     setShowCreateGroup(false);
     notify("Grup oluşturuldu!", "success");
@@ -305,8 +337,6 @@ const App = () => {
   const handleStartCall = async (type) => { setIsCalling(true); setCallType(type); };
   const handleEndCall = () => { setIsCalling(false); setCallType(null); };
 
-
-  // App.jsx içerisinde uygun bir yere ekleyin
   const toggleFavorite = (type, item) => {
     setFavorites(prev => {
       const list = prev[type];
@@ -339,7 +369,6 @@ const App = () => {
     <div className="flex h-screen bg-white dark:bg-[#030303] text-neutral-900 dark:text-neutral-200 font-sans overflow-hidden transition-colors duration-300">
       <ToastContainer notifications={notifications} removeNotification={removeNotification} />
       
-      
       <Sidebar 
         currentUser={currentUser} primaryColor={primaryColor} setIsLoggedIn={() => supabase.auth.signOut()} 
         setShowRequests={setShowRequests} incomingCount={incomingRequests.length}
@@ -353,7 +382,9 @@ const App = () => {
         showMediaPanel={showMediaPanel} setShowMediaPanel={setShowMediaPanel} gifSearch={gifSearch} 
         setGifSearch={setGifSearch} gifResults={gifResults} sendMediaMessage={sendMediaMessage} 
         toggleFavorite={toggleFavorite} favorites={favorites} stickerTab={stickerTab} 
-        setStickerTab={setStickerTab} inputText={inputText} setInputText={setInputText} 
+        setStickerTab={setStickerTab} inputText={inputText} 
+        handleTypingChange={handleTypingChange} // YENİ EKLENDİ
+        typingUsers={typingUsers} // YENİ EKLENDİ
         handleSend={() => handleSend('text')} mediaPanel={mediaPanel} setMediaPanel={setMediaPanel}
         currentUser={currentUser} primaryColor={primaryColor} onHeaderClick={() => setShowChatDetails(true)}
       />

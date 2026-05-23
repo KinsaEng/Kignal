@@ -35,10 +35,10 @@ const Sidebar = ({
         </div>
         
         <div className="flex gap-2">
-          <button onClick={() => setShowAddFriend(true)} className="flex-1 flex items-center justify-center py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-[10px] font-black hover:bg-neutral-800 transition shadow-inner">
+          <button onClick={() => setShowAddFriend(true)} className="flex-1 flex items-center justify-center py-3 dark:bg-neutral-900 border dark:border-neutral-800 rounded-xl text-[10px] font-black dark:hover:bg-neutral-800 hover:bg-neutral-200 transition shadow-inner">
             <UserPlus className="w-3.5 h-3.5 mr-1 kignal-primary-text" /> KİŞİ EKLE
           </button>
-          <button onClick={() => setShowCreateGroup(true)} className="flex-1 flex items-center justify-center py-3 bg-neutral-900 border border-neutral-800 rounded-xl text-[10px] font-black hover:bg-neutral-800 transition shadow-inner">
+          <button onClick={() => setShowCreateGroup(true)} className="flex-1 flex items-center justify-center py-3 dark:bg-neutral-900 border dark:border-neutral-800 rounded-xl text-[10px] font-black dark:hover:bg-neutral-800 hover:bg-neutral-200 transition shadow-inner">
             <Users className="w-3.5 h-3.5 mr-1 kignal-primary-text" /> GRUP KUR
           </button>
         </div>
@@ -61,7 +61,7 @@ const Sidebar = ({
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex justify-between mb-1">
-                  <span className="font-bold text-sm text-neutral-200 truncate">{chat.name}</span>
+                  <span className="font-bold text-sm dark:text-neutral-200 text-neutral-800 truncate">{chat.name}</span>
                   <span className="text-[9px] text-neutral-600">{chat.lastSeen}</span>
                 </div>
                 <p className="text-[10px] text-neutral-500 truncate uppercase tracking-tighter italic">{chat.isGroup ? 'Grup Sohbeti' : 'Şifreli'}</p>
