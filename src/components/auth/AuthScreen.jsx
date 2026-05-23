@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Zap, LogIn, UserPlus, Mail, Phone as PhoneIcon } from 'lucide-react';
 import ToastContainer from '../shared/ToastContainer';
-import { supabase } from '../../App';
+import { supabase } from '../../lib/supabaseClient';
 
 const AuthScreen = ({ authMode, setAuthMode, notify, notifications, removeNotification }) => {
   const [identifier, setIdentifier] = useState(''); // Email VEYA Username
