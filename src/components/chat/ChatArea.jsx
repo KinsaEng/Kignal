@@ -12,12 +12,13 @@ const ChatArea = ({
   showMediaPanel, setShowMediaPanel, gifSearch, setGifSearch, gifResults, 
   sendMediaMessage, toggleFavorite, favorites, stickerTab, setStickerTab, 
   inputText, handleTypingChange, handleSend, mediaPanel, setMediaPanel, currentUser, 
-  onHeaderClick, primaryColor, typingUsers, activeCall, handleAcceptCall,incomingCall ,setInputText
+  onHeaderClick, primaryColor, typingUsers, activeCall, handleAcceptCall,incomingCall ,setInputText,liveCalls
 }) => {
 
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const fileInputRef = React.useRef(null);
-  const hasLiveCallInThisChat = activeCall && (activeCall.caller === activeChatId || activeCall.room_id === activeChatId);
+  const hasLiveCallInThisChat =
+  liveCalls?.[activeChatId]?.active;
 
   const handleFileMenuClick = (type) => {
   setShowAttachMenu(false);

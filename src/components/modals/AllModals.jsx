@@ -384,6 +384,25 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
       } 
       else if (type === 'answer' && pc) await pc.setRemoteDescription(new RTCSessionDescription(data));
       else if (type === 'ice-candidate' && pc) await pc.addIceCandidate(new RTCIceCandidate(data));
+
+      channel.on(
+        'broadcast',
+        { event: 'peer-left' },
+        payload => {
+          const username = payload.payload.username;
+
+          const pc = peerConnections.current[username];
+
+          if (pc) {
+            pc.close();
+            delete peerConnections.current[username];
+          }
+
+          setRemotePeers(prev =>
+            prev.filter(p => p.username !== username)
+          );
+        }
+      );
     });
 
     channel.on('broadcast', { event: 'peer-joined' }, (payload) => {
@@ -404,20 +423,21 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
 
     pc.onicecandidate = (event) => { if (event.candidate) sendSignal(peerUsername, 'ice-candidate', event.candidate); };
 
-    pc.ontrack = (event) => {
-    const remoteStream = event.streams[0];
-
     pc.onnegotiationneeded = async () => {
       try {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
+        const offer = await pc.createOffer();
 
-      sendSignal(peerUsername, 'offer', offer);
+        await pc.setLocalDescription(offer);
+
+        sendSignal(peerUsername, 'offer', offer);
       } catch (err) {
-      console.error(err);
+        console.error(err);
       }
     };
 
+
+    pc.ontrack = (event) => {
+    const remoteStream = event.streams[0];
 
     setRemotePeers(prev => {
       const existing = prev.find(p => p.username === peerUsername);
@@ -578,6 +598,14 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
     Object.values(peerConnections.current).forEach(pc => pc.close());
     peerConnections.current = {};
     if (channelRef.current) supabase.removeChannel(channelRef.current);
+
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'peer-left',
+      payload: {
+        username: currentUser
+      }
+    });
   };
 
   return (

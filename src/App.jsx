@@ -25,6 +25,7 @@ const App = () => {
   
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
+  const [liveCalls, setLiveCalls] = useState({});
 
   const [messages, setMessages] = useState({});
   const [friendRequests, setFriendRequests] = useState([]);
@@ -198,45 +199,48 @@ const App = () => {
     const script = document.createElement('script'); script.src = KATEX_JS; script.async = true; script.onload = () => setKatexLoaded(true); document.head.appendChild(script);
   }, []);
 
-useEffect(() => {
-  if (!currentUser) return;
+// useEffect(() => {
+//   if (!currentUser) return;
 
-  const callChannel = supabase.channel('realtime-calls')
-    // 1. Bize BİR ARAMA GELDİĞİNDE (B kişisi bunu duyar)
-    .on('broadcast', { event: 'call-invite' }, ({ payload }) => {
-      if (payload.receiver === currentUser && payload.status === 'ringing') {
-        setIncomingCall(payload);
-      }
-    })
-    // 2. ARAMAMIZA CEVAP VERİLDİĞİNDE (A kişisi bunu duyar)
-    .on('broadcast', { event: 'call-action' }, ({ payload }) => {
-      // Eğer gelen sinyal bizim bulunduğumuz sohbetle ilgiliyse
-      if (activeChatId === payload.room_id || activeCall?.room_id === payload.room_id) {
+//   const callChannel = supabase.channel('realtime-calls')
+//     // 1. Bize BİR ARAMA GELDİĞİNDE (B kişisi bunu duyar)
+//     .on('broadcast', { event: 'call-invite' }, ({ payload }) => {
+//       if (payload.receiver === currentUser && payload.status === 'ringing') {
+//         setIncomingCall(payload);
+//       }
+//     })
+//     // 2. ARAMAMIZA CEVAP VERİLDİĞİNDE (A kişisi bunu duyar)
+//     .on('broadcast', { event: 'call-action' }, ({ payload }) => {
+//       // Eğer gelen sinyal bizim bulunduğumuz sohbetle ilgiliyse
+//       if (activeChatId === payload.room_id || activeCall?.room_id === payload.room_id) {
         
-        if (payload.status === 'accepted') {
-          // B kişisi kabul etti! A kişisi de HEMEN B'nin olduğu odaya (room_id) giriyor.
-          setActiveCall(payload); // İkisinin de activeCall içindeki room_id'si aynı oluyor!
-          setIsCalling(true);
-          setIncomingCall(null);
-        } 
-        else if (payload.status === 'ended') {
-          // Arama reddedildi veya kapatıldı
-          setIsCalling(false);
-          setIncomingCall(null);
-          setActiveCall(null);
-        }
-      }
-    })
-    .subscribe((status) => {
-      if (status === 'SUBSCRIBED') {
-        callChannelRef.current = callChannel;
-      }
-    });
+//         if (payload.status === 'accepted') {
+//           // B kişisi kabul etti! A kişisi de HEMEN B'nin olduğu odaya (room_id) giriyor.
+//           setActiveCall(payload); // İkisinin de activeCall içindeki room_id'si aynı oluyor!
+//           setIsCalling(true);
+//           setIncomingCall(null);
+//         } 
+//         else if (payload.status === 'ended') {
+//           // Arama reddedildi veya kapatıldı
+//           setIsCalling(false);
+//           setIncomingCall(null);
+//           setActiveCall(null);
+//         }
+//       }
+//     })
+//     .subscribe((status) => {
+//       if (status === 'SUBSCRIBED') {
+//         callChannelRef.current = callChannel;
+//       }
+//     });
 
-  return () => {
-    supabase.removeChannel(callChannel);
-  };
-}, [currentUser, activeChatId, activeCall]); 
+//   return () => {
+//     supabase.removeChannel(callChannel);
+//   };
+// }, [currentUser, activeChatId, activeCall]); 
+
+
+
 // DİKKAT: Bağımlılıklara activeChatId ve activeCall'u da ekledik ki güncel kalsınlar
 
 
@@ -358,25 +362,77 @@ useEffect(() => {
     notify("Grup oluşturuldu!", "success");
   };
 
-  const handleStartCall = (type) => {
-    if (!activeChatId) return;
-    setIsVideoOff(type === 'voice'); // YENİ EKLENDİ: Sesliyse kamerayı kapa
-    setActiveCall({ caller: currentUser, type: type, room_id: activeChatId });
+  const leaveCurrentCall = () => {
+    if (!activeCall?.room_id) return;
 
-    if (callChannelRef.current && !activeChat.isGroup) {
-      callChannelRef.current.send({
-        type: 'broadcast',
-        event: 'call-invite',
-        payload: {
-          receiver: activeChat.name, 
-          caller: currentUser,
-          type: type,
-          room_id: activeChatId,
-          status: 'ringing'
+    setLiveCalls(prev => {
+      const room = prev[activeCall.room_id];
+
+      if (!room) return prev;
+
+      return {
+        ...prev,
+        [activeCall.room_id]: {
+          ...room,
+          participants: room.participants.filter(
+            p => p !== currentUser
+          )
         }
-      });
-    }
+      };
+    });
   };
+
+  const handleStartCall = (type) => {
+  if (!activeChatId || !activeChat) return;
+
+  setIsVideoOff(type === 'voice');
+
+  const outgoingCall = {
+    caller: currentUser,
+    type,
+    room_id: activeChatId,
+    status: 'ringing'
+  };
+
+  const roomId = activeChatId;
+
+  setCallRooms(prev => ({
+    ...prev,
+    [roomId]: {
+      status: "active",
+      caller: currentUser,
+      participants: [currentUser]
+    }
+  }));
+
+  setActiveCall(outgoingCall);
+  setIsCalling(true);
+
+  setLiveCalls(prev => ({
+    ...prev,
+    [activeChatId]: {
+      room_id: activeChatId,
+      started_by: currentUser,
+      active: true,
+      type,
+      participants: [currentUser]
+    }
+  }));
+
+  if (callChannelRef.current && !activeChat.isGroup) {
+    callChannelRef.current.send({
+      type: 'broadcast',
+      event: 'call-invite',
+      payload: {
+        receiver: activeChat.name,
+        caller: currentUser,
+        type,
+        room_id: activeChatId,
+        status: 'ringing'
+      }
+    });
+  }
+};
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;
@@ -388,22 +444,89 @@ useEffect(() => {
       callChannelRef.current.send({ type: 'broadcast', event: 'call-action', payload: acceptedPayload });
     }
 
+    setCallRooms(prev => ({
+    ...prev,
+    [incomingCall.room_id]: {
+      ...prev[incomingCall.room_id],
+      status: "active",
+      participants: [
+        ...(prev[incomingCall.room_id]?.participants || []),
+        currentUser
+      ]
+    }
+  }));
+
     setActiveCall(acceptedPayload); 
     setIsCalling(true); 
     setIncomingCall(null);
   };
 
-  const handleRejectCall = () => {
-    const targetCall = incomingCall || activeCall;
-    if (!targetCall) return;
-    
-    if (callChannelRef.current) {
-        callChannelRef.current.send({ type: 'broadcast', event: 'call-action', payload: { ...targetCall, status: 'ended' } });
+const handleRejectCall = () => {
+  const targetCall = incomingCall || activeCall;
+
+  if (!targetCall) return;
+
+  if (callChannelRef.current) {
+    callChannelRef.current.send({
+      type: 'broadcast',
+      event: 'call-action',
+      payload: {
+        ...targetCall,
+        status: 'ended'
+      }
+    });
+  }
+
+
+  const roomId = (incomingCall || activeCall)?.room_id;
+
+  if (roomId) {
+    setCallRooms(prev => ({
+      ...prev,
+      [roomId]: {
+        ...prev[roomId],
+        status: "ended"
+      }
+    }));
+  }
+
+  leaveCurrentCall();
+
+  setIsCalling(false);
+  setIncomingCall(null);
+  setActiveCall(null);
+};
+
+const [callRooms, setCallRooms] = useState({});
+
+  const handleEndCall = () => {
+    const roomId = (incomingCall || activeCall)?.room_id;
+
+    if (roomId) {
+      setCallRooms(prev => ({
+        ...prev,
+        [roomId]: {
+          ...prev[roomId],
+          status: "ended"
+        }
+      }));
     }
-    setIsCalling(false); setIncomingCall(null); setActiveCall(null);
+
+
+    if (roomId) {
+      setCallRooms(prev => ({
+        ...prev,
+        [roomId]: {
+          ...prev[roomId],
+          status: "ended"
+        }
+      }));
+    }
+
+    setActiveCall(null);
+    setIncomingCall(null);
+    setIsCalling(false);
   };
-  
-  const handleEndCall = () => { setIsCalling(false); setCallType(null); };
 
   const toggleFavorite = (type, item) => {
     setFavorites(prev => {
@@ -463,7 +586,7 @@ useEffect(() => {
           {isCalling && <CallOverlay activeChat={activeChat} activeCall={activeCall} currentUser={currentUser} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} handleEndCall={handleEndCall} supabase={supabase} />}
       {showSettings && <SettingsModal setShowSettings={setShowSettings} currentUser={currentUser} setCurrentUser={setCurrentUser} supabase={supabase} notify={notify} theme={theme} setTheme={setTheme} primaryColor={primaryColor} setPrimaryColor={setPrimaryColor} />}
       
-      {incomingCall && (
+      {incomingCall && !isCalling && callRooms?.[incomingCall.room_id]?.status !== "active" && (
         <div className="fixed inset-x-0 top-6 mx-auto w-full max-w-sm bg-neutral-900/95 backdrop-blur-2xl border border-neutral-800 p-6 rounded-[32px] shadow-2xl z-[200] flex flex-col items-center gap-4 animate-in slide-in-from-top duration-300">
           <div className="w-12 h-12 bg-blue-600/10 rounded-2xl flex items-center justify-center text-blue-500 animate-pulse"><Phone className="w-6 h-6" /></div>
           <div className="text-center">
