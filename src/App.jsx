@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import ToastContainer from './components/shared/ToastContainer';
+import { Phone } from 'lucide-react';
 import AuthScreen from './components/auth/AuthScreen';
 import Sidebar from './components/layout/Sidebar';
 import ChatArea from './components/chat/ChatArea';
@@ -62,6 +63,7 @@ const App = () => {
   const [typingUsers, setTypingUsers] = useState({});
   const typingChannelRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const callChannelRef = useRef(null); // BUNU YENİ EKLEDİK
 
   const incomingRequests = useMemo(() => friendRequests.filter(r => r.receiver_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
   const outgoingRequests = useMemo(() => friendRequests.filter(r => r.sender_username === currentUser && r.status === 'pending'), [friendRequests, currentUser]);
@@ -153,6 +155,8 @@ const App = () => {
       })
       .subscribe();
 
+
+    
     const callChannel = supabase.channel('realtime-calls')
       .on('broadcast', { event: 'call-invite' }, ({ payload }) => {
         if (payload.receiver === currentUser && payload.status === 'ringing') setIncomingCall(payload);
@@ -163,7 +167,10 @@ const App = () => {
           else if (payload.status === 'accepted') { setIsCalling(true); setIncomingCall(null); setActiveCall(payload); }
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+         // BURAYI EKLİYORUZ: Kanal bağlandığında kullanmak üzere kaydediyoruz
+         if (status === 'SUBSCRIBED') callChannelRef.current = callChannel;
+      });
 
     const typingChannel = supabase.channel('typing-room', { config: { broadcast: { self: false } } });
     typingChannel.on('broadcast', { event: 'typing' }, ({ payload }) => {
@@ -190,6 +197,69 @@ const App = () => {
     const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = KATEX_CSS; document.head.appendChild(link);
     const script = document.createElement('script'); script.src = KATEX_JS; script.async = true; script.onload = () => setKatexLoaded(true); document.head.appendChild(script);
   }, []);
+
+useEffect(() => {
+  if (!currentUser) return;
+
+  const callChannel = supabase.channel('realtime-calls')
+    // 1. Bize BİR ARAMA GELDİĞİNDE (B kişisi bunu duyar)
+    .on('broadcast', { event: 'call-invite' }, ({ payload }) => {
+      if (payload.receiver === currentUser && payload.status === 'ringing') {
+        setIncomingCall(payload);
+      }
+    })
+    // 2. ARAMAMIZA CEVAP VERİLDİĞİNDE (A kişisi bunu duyar)
+    .on('broadcast', { event: 'call-action' }, ({ payload }) => {
+      // Eğer gelen sinyal bizim bulunduğumuz sohbetle ilgiliyse
+      if (activeChatId === payload.room_id || activeCall?.room_id === payload.room_id) {
+        
+        if (payload.status === 'accepted') {
+          // B kişisi kabul etti! A kişisi de HEMEN B'nin olduğu odaya (room_id) giriyor.
+          setActiveCall(payload); // İkisinin de activeCall içindeki room_id'si aynı oluyor!
+          setIsCalling(true);
+          setIncomingCall(null);
+        } 
+        else if (payload.status === 'ended') {
+          // Arama reddedildi veya kapatıldı
+          setIsCalling(false);
+          setIncomingCall(null);
+          setActiveCall(null);
+        }
+      }
+    })
+    .subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        callChannelRef.current = callChannel;
+      }
+    });
+
+  return () => {
+    supabase.removeChannel(callChannel);
+  };
+}, [currentUser, activeChatId, activeCall]); 
+// DİKKAT: Bağımlılıklara activeChatId ve activeCall'u da ekledik ki güncel kalsınlar
+
+
+  useEffect(() => {
+  if (!currentUser) return;
+
+  // Sadece bana ait olan 'call-alerts-kullaniciadim' kanalını dinle
+  const callAlertsChannel = supabase.channel(`call-alerts-${currentUser}`)
+    .on('broadcast', { event: 'incoming_call' }, (payload) => {
+      // Birisi beni aradığında state'i güncelle (Ekranda modal çıkmasını sağlar)
+      setIncomingCall({
+        caller: payload.payload.caller,
+        type: payload.payload.type,
+        room_id: payload.payload.room_id,
+      });
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(callAlertsChannel);
+  };
+}, [currentUser]);
+
 
   const notify = (message, type = 'info') => {
     const id = Date.now();
@@ -288,22 +358,52 @@ const App = () => {
     notify("Grup oluşturuldu!", "success");
   };
 
-  const handleStartCall = async (type) => { setIsCalling(true); setCallType(type); };
-  const handleEndCall = () => { setIsCalling(false); setCallType(null); };
+  const handleStartCall = (type) => {
+    if (!activeChatId) return;
+    setIsVideoOff(type === 'voice'); // YENİ EKLENDİ: Sesliyse kamerayı kapa
+    setActiveCall({ caller: currentUser, type: type, room_id: activeChatId });
+
+    if (callChannelRef.current && !activeChat.isGroup) {
+      callChannelRef.current.send({
+        type: 'broadcast',
+        event: 'call-invite',
+        payload: {
+          receiver: activeChat.name, 
+          caller: currentUser,
+          type: type,
+          room_id: activeChatId,
+          status: 'ringing'
+        }
+      });
+    }
+  };
 
   const handleAcceptCall = () => {
     if (!incomingCall) return;
+    setIsVideoOff(incomingCall.type === 'voice'); // YENİ EKLENDİ: Sesli geliyorsa kamerayı açma
+    
     const acceptedPayload = { ...incomingCall, status: 'accepted' };
-    supabase.channel('realtime-calls').send({ type: 'broadcast', event: 'call-action', payload: acceptedPayload });
-    setActiveCall(acceptedPayload); setIsCalling(true); setIncomingCall(null);
+
+    if (callChannelRef.current) {
+      callChannelRef.current.send({ type: 'broadcast', event: 'call-action', payload: acceptedPayload });
+    }
+
+    setActiveCall(acceptedPayload); 
+    setIsCalling(true); 
+    setIncomingCall(null);
   };
 
   const handleRejectCall = () => {
     const targetCall = incomingCall || activeCall;
     if (!targetCall) return;
-    supabase.channel('realtime-calls').send({ type: 'broadcast', event: 'call-action', payload: { ...targetCall, status: 'ended' } });
+    
+    if (callChannelRef.current) {
+        callChannelRef.current.send({ type: 'broadcast', event: 'call-action', payload: { ...targetCall, status: 'ended' } });
+    }
     setIsCalling(false); setIncomingCall(null); setActiveCall(null);
   };
+  
+  const handleEndCall = () => { setIsCalling(false); setCallType(null); };
 
   const toggleFavorite = (type, item) => {
     setFavorites(prev => {
@@ -346,6 +446,8 @@ const App = () => {
         toggleFavorite={toggleFavorite} favorites={favorites} stickerTab={stickerTab} 
         setStickerTab={setStickerTab} inputText={inputText} 
         handleTypingChange={handleTypingChange} typingUsers={typingUsers}
+        incomingCall={incomingCall} 
+        handleAcceptCall={handleAcceptCall} 
         handleSend={() => handleSend('text')} mediaPanel={mediaPanel} setMediaPanel={setMediaPanel}
         currentUser={currentUser} primaryColor={primaryColor} onHeaderClick={() => setShowChatDetails(true)}
       />
@@ -356,8 +458,9 @@ const App = () => {
       
       {showChatDetails && <ChatDetailsModal activeChat={activeChat} setShowChatDetails={setShowChatDetails} handleStartCall={handleStartCall} handleAction={handleAction} notify={notify} />}
       
-      {isCalling && <CallOverlay activeChat={activeChat} currentUser={currentUser} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} handleEndCall={handleEndCall} supabase={supabase} />}
-      
+      {/* {isCalling && <CallOverlay activeChat={activeChat} currentUser={currentUser} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} handleEndCall={handleEndCall} supabase={supabase} />} */}
+      {/* activeCall={activeCall} KISMINI EKLEDİK */}
+          {isCalling && <CallOverlay activeChat={activeChat} activeCall={activeCall} currentUser={currentUser} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} handleEndCall={handleEndCall} supabase={supabase} />}
       {showSettings && <SettingsModal setShowSettings={setShowSettings} currentUser={currentUser} setCurrentUser={setCurrentUser} supabase={supabase} notify={notify} theme={theme} setTheme={setTheme} primaryColor={primaryColor} setPrimaryColor={setPrimaryColor} />}
       
       {incomingCall && (

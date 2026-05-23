@@ -331,9 +331,8 @@ export const RemotePeerVideo = ({ peer }) => {
   );
 };
 
-
 // --- P2P WEBRTC CALL OVERLAY (Ana Arayüz) ---
-export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff, isMuted, setIsMuted, handleEndCall, supabase }) => {
+export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, setIsVideoOff, isMuted, setIsMuted, handleEndCall, supabase }) => {
   const localVideoRef = useRef(null);
   const [localStream, setLocalStream] = useState(null);
   const [remotePeers, setRemotePeers] = useState([]); 
@@ -350,17 +349,31 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
   }, []);
 
   const startMedia = async () => {
+    let stream = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: !isVideoOff, audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ video: !isVideoOff, audio: true });
+    } catch (err) { 
+      console.error("Medya cihazlarına erişilemedi:", err); 
+      // Kamera yoksa sadece mikrofonla girmeyi dene
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        setIsVideoOff(true);
+      } catch (audioErr) {
+        console.error("Mikrofon da bulunamadı.");
+      }
+    }
+
+    if (stream) {
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       stream.getAudioTracks().forEach(track => track.enabled = !isMuted);
-      setupSignaling(stream);
-    } catch (err) { console.error("Medya cihazlarına erişilemedi:", err); }
+    }
+    setupSignaling(stream);
   };
 
   const setupSignaling = (stream) => {
-    const channel = supabase.channel(`webrtc-${activeChat.id}`);
+    // İŞTE SENİ ÇILDIRTAN HATANIN ÇÖZÜMÜ BURADA: activeChat.id YERİNE activeCall.room_id KULLANDIK
+    const channel = supabase.channel(`webrtc-${activeCall?.room_id || 'default-room'}`);
     channelRef.current = channel;
 
     channel.on('broadcast', { event: 'signal' }, async (payload) => {
@@ -394,7 +407,7 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
   const createPeerConnection = (peerUsername, stream, isInitiator) => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
     peerConnections.current[peerUsername] = pc;
-    stream.getTracks().forEach(track => pc.addTrack(track, stream));
+    if (stream) stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
     pc.onicecandidate = (event) => { if (event.candidate) sendSignal(peerUsername, 'ice-candidate', event.candidate); };
 
@@ -411,7 +424,7 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
 
   const toggleMute = () => {
     if (localStream) {
-      localStream.getAudioTracks().forEach(track => track.enabled = isMuted); // isMuted true ise artık sesi aç
+      localStream.getAudioTracks().forEach(track => track.enabled = isMuted);
       setIsMuted(!isMuted);
     }
   };
@@ -423,6 +436,7 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
     }
   };
 
+  // EKRAN PAYLAŞIMI ÇÖKMESİNİ ENGELLEYEN GÜVENLİ KOD
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
       try {
@@ -444,10 +458,12 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
   };
 
   const stopScreenShare = () => {
-    const videoTrack = localStream.getVideoTracks()[0];
+    // Eğer kamerası yoksa çökmesin diye null check (?) ekledik
+    const videoTrack = localStream?.getVideoTracks()[0];
+    
     Object.values(peerConnections.current).forEach(pc => {
       const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-      if (sender) sender.replaceTrack(videoTrack); 
+      if (sender && videoTrack) sender.replaceTrack(videoTrack); 
     });
     
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
@@ -465,7 +481,8 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
     <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col p-8 animate-in fade-in duration-300">
       <div className="flex justify-between items-center mb-8">
         <div>
-          <h2 className="text-2xl font-black text-white tracking-tighter">{activeChat?.name}</h2>
+          {/* activeChat olmayabileceği ihtimaline karşı isim getirmeyi de güvenli hale getirdik */}
+          <h2 className="text-2xl font-black text-white tracking-tighter">{activeChat?.name || activeCall?.caller || 'Sohbet'}</h2>
           <p className="text-green-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2 mt-1">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
             Güvenli P2P Bağlantısı
@@ -477,7 +494,6 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
       </div>
 
       <div className="flex-1 grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-        {/* Kendi Videomuz */}
         <div className="relative rounded-3xl overflow-hidden bg-neutral-900 shadow-2xl border border-neutral-800 h-64">
           {isVideoOff && !isScreenSharing ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -494,34 +510,22 @@ export const CallOverlay = ({ activeChat, currentUser, isVideoOff, setIsVideoOff
           </div>
         </div>
 
-        {/* Karşı Tarafın Videoları */}
         {remotePeers.map(p => (
            <RemotePeerVideo key={p.username} peer={p} />
         ))}
       </div>
 
-      {/* Alt Kontrol Barı (MİKROFON SİMGESİ İLE DÜZELTİLDİ) */}
       <div className="flex justify-center items-center gap-4 mt-8">
-        <button 
-          onClick={toggleMute} 
-          className={`p-5 rounded-2xl border transition-all active:scale-90 ${isMuted ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}
-        >
+        <button onClick={toggleMute} className={`p-5 rounded-2xl border transition-all active:scale-90 ${isMuted ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}>
           {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
         </button>
-        <button 
-          onClick={toggleVideo} 
-          className={`p-5 rounded-2xl border transition-all active:scale-90 ${isVideoOff ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}
-        >
+        <button onClick={toggleVideo} className={`p-5 rounded-2xl border transition-all active:scale-90 ${isVideoOff ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}>
           {isVideoOff ? <Camera className="w-6 h-6" /> : <Video className="w-6 h-6" />}
         </button>
-        <button 
-          onClick={toggleScreenShare} 
-          className={`p-5 rounded-2xl border transition-all active:scale-90 ${isScreenSharing ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}
-        >
+        <button onClick={toggleScreenShare} className={`p-5 rounded-2xl border transition-all active:scale-90 ${isScreenSharing ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}>
           <MonitorUp className="w-6 h-6" />
         </button>
       </div>
-
     </div>
   );
 };

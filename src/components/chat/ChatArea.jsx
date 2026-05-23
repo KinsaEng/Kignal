@@ -7,14 +7,14 @@ const STICKER_PACKS = {
   neon: ["⚡", "🎆", "✨", "🧬", "🧪", "🪐", "👾", "🕶️"],
   animated: ["❤️", "😂", "😮", "😡", "🥳", "🤔", "😴", "🙌"]
 };
-
 const ChatArea = ({ 
   activeChat, activeChatId, handleStartCall, messages, scrollRef, renderMessageContent, 
   showMediaPanel, setShowMediaPanel, gifSearch, setGifSearch, gifResults, 
   sendMediaMessage, toggleFavorite, favorites, stickerTab, setStickerTab, 
   inputText, handleTypingChange, handleSend, mediaPanel, setMediaPanel, currentUser, 
-  onHeaderClick, primaryColor, typingUsers, activeCall, handleAcceptCall
+  onHeaderClick, primaryColor, typingUsers, activeCall, handleAcceptCall,incomingCall ,setInputText
 }) => {
+
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const fileInputRef = React.useRef(null);
   const hasLiveCallInThisChat = activeCall && (activeCall.caller === activeChatId || activeCall.room_id === activeChatId);
@@ -66,25 +66,23 @@ const ChatArea = ({
 
         {/* Butonların Dönüşüm Alanı */}
         <div className="flex items-center gap-2">
-          {hasLiveCallInThisChat ? (
-            // EĞER SOHBETTE AKTİF BİR ARAMA VARSA BUTONLAR "ARAMAYA KATIL" OLARAK DÖNÜŞÜR
-            <button 
-              onClick={handleAcceptCall}
-              className="bg-green-600 hover:bg-green-500 text-white text-[11px] font-black uppercase tracking-wider px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-green-600/20 animate-pulse transition-all active:scale-95"
-            >
-              <Zap className="w-4 h-4 text-white" /> Aramaya Katıl
+                {incomingCall && incomingCall.room_id === activeChatId ? (
+          <button 
+            onClick={handleAcceptCall} 
+            className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-xl transition-all active:scale-95 font-bold text-[11px] uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-green-500/20"
+          >
+            <Phone className="w-4 h-4 animate-pulse" /> Aramaya Katıl
+          </button>
+        ) : (
+          <>
+            <button onClick={() => handleStartCall('voice')} className="p-3 bg-neutral-900/50 hover:bg-white/10 rounded-xl transition" title="Sesli Sohbet">
+              <Phone className="w-5 h-5 text-neutral-400 hover:text-white" />
             </button>
-          ) : (
-            // AKTİF ARAMA YOKSA STANDART BUTONLAR RENDER EDİLİR
-            <>
-              <button onClick={() => handleStartCall('voice')} className="p-3 rounded-2xl bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:text-white hover:bg-blue-600 transition-all">
-                <Phone className="w-4 h-4" />
-              </button>
-              <button onClick={() => handleStartCall('video')} className="p-3 rounded-2xl bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:text-white hover:bg-blue-600 transition-all">
-                <Video className="w-4 h-4" />
-              </button>
-            </>
-          )}
+            <button onClick={() => handleStartCall('video')} className="p-3 bg-neutral-900/50 hover:bg-white/10 rounded-xl transition" title="Görüntülü Sohbet">
+              <Video className="w-5 h-5 text-neutral-400 hover:text-white" />
+            </button>
+          </>
+        )}
           <button className="p-3 rounded-2xl bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:text-white hover:bg-neutral-800 transition-all">
             <Search className="w-4 h-4" />
           </button>
