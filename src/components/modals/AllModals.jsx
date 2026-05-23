@@ -3,10 +3,10 @@ import {
   UserPlus, Users, X, Check, XCircle, Settings, User, Palette, Moon, Sun, 
   Monitor, Phone, Trash2, Video, MicOff, Mic, Search, Timer, Edit2, Image as ImageIcon, 
   ShieldCheck, Plus, Ban, AlertOctagon, Camera, MonitorUp, Volume2, Maximize, 
-  Minimize, Activity, Pipette, MoreVertical
+  Minimize, Activity, Pipette, MoreVertical, ChevronUp
 } from 'lucide-react';
 
-// 1. ADD FRIEND MODAL (Değişiklik Yok)
+// 1. ADD FRIEND MODAL
 export const AddFriendModal = ({ setShowAddFriend, newFriendName, setNewFriendName, sendFriendRequest }) => (
   <div className="absolute inset-0 z-[150] bg-black/80 dark:bg-black/95 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-200">
     <div className="w-full max-w-sm bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800/60 p-10 rounded-[48px] shadow-2xl transition-all">
@@ -21,7 +21,7 @@ export const AddFriendModal = ({ setShowAddFriend, newFriendName, setNewFriendNa
   </div>
 );
 
-// 2. CREATE GROUP MODAL (Değişiklik Yok)
+// 2. CREATE GROUP MODAL
 export const CreateGroupModal = ({ setShowCreateGroup, createGroup, friendsList }) => {
   const [groupName, setGroupName] = useState("");
   const [selectedMembers, setSelectedMembers] = useState([]);
@@ -50,7 +50,7 @@ export const CreateGroupModal = ({ setShowCreateGroup, createGroup, friendsList 
   );
 };
 
-// 3. REQUESTS MODAL (Değişiklik Yok)
+// 3. REQUESTS MODAL
 export const RequestsModal = ({ setShowRequests, incomingRequests, outgoingRequests, handleAction }) => {
   const [tab, setTab] = useState('incoming');
   return (
@@ -112,7 +112,7 @@ export const ChatDetailsModal = ({ activeChat, setShowChatDetails, handleStartCa
   );
 };
 
-// 5. SETTINGS MODAL (GÜNCELLENDİ: SOHBETLERİN SİLİNMEMESİ İÇİN CASCADE HACK)
+// 5. SETTINGS MODAL 
 export const SettingsModal = ({ setShowSettings, currentUser, setCurrentUser, supabase, notify, theme, setTheme, primaryColor, setPrimaryColor }) => {
   const [newUsername, setNewUsername] = useState(currentUser || "");
   const [avatar, setAvatar] = useState(null);
@@ -140,8 +140,6 @@ export const SettingsModal = ({ setShowSettings, currentUser, setCurrentUser, su
     
     const { error } = await supabase.auth.updateUser({ data: { username: newUsername } });
     if (!error) { 
-      // Vahşi ama etkili çözüm: Veritabanında ilişkileri "id" ile değil de metin (username) ile kurduğun için
-      // ismini değiştirdiğinde sistemdeki tüm geçmiş mesajlarını ve isteklerini bulup yeni adınla değiştirmemiz gerekiyor.
       await Promise.all([
           supabase.from('profiles').update({ username: newUsername }).eq('username', currentUser),
           supabase.from('messages').update({ sender_username: newUsername }).eq('sender_username', currentUser),
@@ -196,7 +194,6 @@ export const SettingsModal = ({ setShowSettings, currentUser, setCurrentUser, su
 
           <div className="space-y-3">
             <label className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest">Vurgu & Baloncuk Rengi</label>
-            
             <div className="flex flex-wrap gap-3 mb-2">
               {solidColors.map(c => (
                 <button key={c} onClick={() => setPrimaryColor(c)} style={{ background: c }} className={`w-8 h-8 rounded-full shadow-md transition-transform hover:scale-110 flex items-center justify-center ${primaryColor === c ? 'ring-2 ring-offset-2 ring-neutral-800 dark:ring-white' : ''}`}>
@@ -208,7 +205,6 @@ export const SettingsModal = ({ setShowSettings, currentUser, setCurrentUser, su
                 <input type="color" className="opacity-0 absolute w-0 h-0" onChange={(e) => setPrimaryColor(e.target.value)} />
               </label>
             </div>
-
             <div className="flex flex-wrap gap-3">
               {gradients.map(g => (
                 <button key={g} onClick={() => setPrimaryColor(g)} style={{ background: g }} className={`w-12 h-8 rounded-xl shadow-md transition-transform hover:scale-110 flex items-center justify-center ${primaryColor === g ? 'ring-2 ring-offset-2 ring-neutral-800 dark:ring-white' : ''}`}>
@@ -237,7 +233,8 @@ export const SettingsModal = ({ setShowSettings, currentUser, setCurrentUser, su
 };
 
 
-// 6. GELİŞMİŞ WEBRTC CALL OVERLAY (Native Fullscreen & Mouse Mute İşlemleri)
+// 6. GELİŞMİŞ WEBRTC CALL OVERLAY 
+// --- GELİŞMİŞ P2P WEBRTC CALL OVERLAY ---
 
 export const RemotePeerVideo = ({ peer }) => {
   const [volume, setVolume] = useState(100);               
@@ -247,14 +244,12 @@ export const RemotePeerVideo = ({ peer }) => {
   const containerRef = useRef(null);
   const indicatorTimeoutRef = useRef(null);
 
-  // Stream'i Video elementine bağla
   useEffect(() => {
     if (videoRef.current && peer.stream) {
       videoRef.current.srcObject = peer.stream;
     }
   }, [peer.stream]);
 
-  // Sadece Kareye tıklayınca Tarayıcının Gerçek Tam Ekranını açma (Native Fullscreen)
   const toggleNativeFullScreen = async () => {
     try {
       if (!document.fullscreenElement) {
@@ -264,12 +259,9 @@ export const RemotePeerVideo = ({ peer }) => {
         if (document.exitFullscreen) await document.exitFullscreen();
         else if (document.webkitExitFullscreen) await document.webkitExitFullscreen();
       }
-    } catch (err) {
-      console.log("Tam ekrana geçerken hata:", err);
-    }
+    } catch (err) { console.log("Tam ekrana geçerken hata:", err); }
   };
 
-  // MOUSE ORTA TUŞ = MUTE
   const handleAuxClick = (e) => {
     if (e.button === 1) { 
       e.preventDefault(); 
@@ -283,15 +275,12 @@ export const RemotePeerVideo = ({ peer }) => {
     }
   };
 
-  // MOUSE TEKERLEĞİ = SES KISMA/AÇMA
   const handleWheel = (e) => {
     e.preventDefault(); 
     let newVol = volume;
-    if (e.deltaY < 0) {
-      newVol = Math.min(100, volume + 5);
-    } else {
-      newVol = Math.max(0, volume - 5);
-    }
+    if (e.deltaY < 0) newVol = Math.min(100, volume + 5);
+    else newVol = Math.max(0, volume - 5);
+    
     setVolume(newVol);
     setIsMuted(newVol === 0);
     if (videoRef.current) videoRef.current.volume = newVol / 100;
@@ -302,24 +291,11 @@ export const RemotePeerVideo = ({ peer }) => {
   };
 
   return (
-    <div
-      ref={containerRef}
-      onAuxClick={handleAuxClick}
-      onWheel={handleWheel}
-      onClick={toggleNativeFullScreen}
-      className={`relative bg-neutral-950 overflow-hidden group transition-all duration-300 w-full h-64 rounded-[32px] border border-neutral-800/80 shadow-xl cursor-pointer`}
-    >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        className="w-full h-full object-cover"
-      />
-
+    <div ref={containerRef} onAuxClick={handleAuxClick} onWheel={handleWheel} onClick={toggleNativeFullScreen} className={`relative bg-neutral-950 overflow-hidden group transition-all duration-300 w-full h-64 rounded-[32px] border border-neutral-800/80 shadow-xl cursor-pointer`}>
+      <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
       <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/5 text-white font-bold text-[10px] tracking-wider uppercase">
         {peer.username || 'Uzak Kullanıcı'} {isMuted && <MicOff className="w-3 h-3 inline ml-1 text-red-500" />}
       </div>
-
       {showIndicator && (
         <div className="absolute bottom-4 right-4 bg-black/80 backdrop-blur-xl text-white text-[11px] font-black px-3 py-2 rounded-xl border border-white/10 flex items-center gap-2 shadow-2xl animate-in scale-in duration-100 z-50">
           {isMuted ? <MicOff className="w-3.5 h-3.5 text-red-500" /> : <Volume2 className="w-3.5 h-3.5 text-blue-500" />}
@@ -331,13 +307,21 @@ export const RemotePeerVideo = ({ peer }) => {
   );
 };
 
-// --- P2P WEBRTC CALL OVERLAY (Ana Arayüz) ---
+// --- P2P WEBRTC CALL OVERLAY ---
 export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, setIsVideoOff, isMuted, setIsMuted, handleEndCall, supabase }) => {
   const localVideoRef = useRef(null);
   const [localStream, setLocalStream] = useState(null);
   const [remotePeers, setRemotePeers] = useState([]); 
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   
+  // Aygıt Seçimi Sate'leri
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedAudio, setSelectedAudio] = useState("");
+  const [selectedVideo, setSelectedVideo] = useState("");
+  const [showAudioMenu, setShowAudioMenu] = useState(false);
+  const [showVideoMenu, setShowVideoMenu] = useState(false);
+
   const peerConnections = useRef({});
   const channelRef = useRef(null);
 
@@ -351,10 +335,10 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
   const startMedia = async () => {
     let stream = null;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: !isVideoOff, audio: true });
+      // Önce cihazları tamamen taramasına izin ver. Sesli aramada da videoyu çekip sonradan kapatacağız (Screen share için)
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      if (isVideoOff) stream.getVideoTracks().forEach(t => t.enabled = false);
     } catch (err) { 
-      console.error("Medya cihazlarına erişilemedi:", err); 
-      // Kamera yoksa sadece mikrofonla girmeyi dene
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
         setIsVideoOff(true);
@@ -367,12 +351,21 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
       setLocalStream(stream);
       if (localVideoRef.current) localVideoRef.current.srcObject = stream;
       stream.getAudioTracks().forEach(track => track.enabled = !isMuted);
+      
+      // İzinler alındıktan sonra aygıtları listele
+      navigator.mediaDevices.enumerateDevices().then(devices => {
+        const audios = devices.filter(d => d.kind === 'audioinput');
+        const videos = devices.filter(d => d.kind === 'videoinput');
+        setAudioDevices(audios);
+        setVideoDevices(videos);
+        if(audios.length > 0) setSelectedAudio(audios[0].deviceId);
+        if(videos.length > 0) setSelectedVideo(videos[0].deviceId);
+      });
     }
     setupSignaling(stream);
   };
 
   const setupSignaling = (stream) => {
-    // İŞTE SENİ ÇILDIRTAN HATANIN ÇÖZÜMÜ BURADA: activeChat.id YERİNE activeCall.room_id KULLANDIK
     const channel = supabase.channel(`webrtc-${activeCall?.room_id || 'default-room'}`);
     channelRef.current = channel;
 
@@ -412,40 +405,116 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
     pc.onicecandidate = (event) => { if (event.candidate) sendSignal(peerUsername, 'ice-candidate', event.candidate); };
 
     pc.ontrack = (event) => {
-      setRemotePeers(prev => {
-        if (prev.find(p => p.username === peerUsername)) return prev;
-        return [...prev, { username: peerUsername, stream: event.streams[0] }];
-      });
+    const remoteStream = event.streams[0];
+
+    pc.onnegotiationneeded = async () => {
+      try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      sendSignal(peerUsername, 'offer', offer);
+      } catch (err) {
+      console.error(err);
+      }
     };
+
+
+    setRemotePeers(prev => {
+      const existing = prev.find(p => p.username === peerUsername);
+
+      if (existing) {
+        return prev.map(p =>
+          p.username === peerUsername
+            ? { ...p, stream: remoteStream }
+            : p
+        );
+      }
+
+      return [
+        ...prev,
+        {
+          username: peerUsername,
+          stream: remoteStream
+        }
+      ];
+    });
+  };
 
     if (isInitiator) pc.createOffer().then(offer => { pc.setLocalDescription(offer); sendSignal(peerUsername, 'offer', offer); });
     return pc;
   };
 
+  // MUTE İŞLEMİ DÜZELTİLDİ
   const toggleMute = () => {
-    if (localStream) {
-      localStream.getAudioTracks().forEach(track => track.enabled = isMuted);
-      setIsMuted(!isMuted);
+    if (!localStream) return;
+
+    const nextMuted = !isMuted;
+
+    localStream.getAudioTracks().forEach(track => {
+      track.enabled = !nextMuted;
+    });
+
+    setIsMuted(nextMuted);
+  };
+
+  // VİDEO KAPATMA AÇMA DÜZELTİLDİ
+  const toggleVideo = async () => {
+    if (isVideoOff) {
+       try {
+         const newStream = await navigator.mediaDevices.getUserMedia({ video: selectedVideo ? { deviceId: { exact: selectedVideo } } : true });
+         const newVideoTrack = newStream.getVideoTracks()[0];
+         
+         const oldVideoTrack = localStream.getVideoTracks()[0];
+         if(oldVideoTrack) {
+           localStream.removeTrack(oldVideoTrack);
+         }
+         localStream.addTrack(newVideoTrack);
+         if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+
+         Object.keys(peerConnections.current).forEach(async peerUsername => {
+           const pc = peerConnections.current[peerUsername];
+           const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+           if (sender) {
+             sender.replaceTrack(newVideoTrack);
+           } else {
+             pc.addTrack(newVideoTrack, localStream);
+             const offer = await pc.createOffer();
+             await pc.setLocalDescription(offer);
+             sendSignal(peerUsername, 'offer', offer);
+           }
+         });
+         setIsVideoOff(false);
+       } catch(err) { console.error("Kamera açılamadı", err); }
+    } else {
+       const videoTrack = localStream.getVideoTracks()[0];
+       if (videoTrack) {
+         videoTrack.enabled = false;
+         videoTrack.stop();
+         localStream.removeTrack(videoTrack);
+       }
+       setIsVideoOff(true);
     }
   };
 
-  const toggleVideo = () => {
-    if (localStream) {
-      localStream.getVideoTracks().forEach(track => track.enabled = isVideoOff);
-      setIsVideoOff(!isVideoOff);
-    }
-  };
-
-  // EKRAN PAYLAŞIMI ÇÖKMESİNİ ENGELLEYEN GÜVENLİ KOD
+  // EKRAN PAYLAŞIMI TAMAMEN ONARILDI
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
       try {
         const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
         const screenVideoTrack = screenStream.getVideoTracks()[0];
         
-        Object.values(peerConnections.current).forEach(pc => {
+        Object.keys(peerConnections.current).forEach(async peerUsername => {
+          const pc = peerConnections.current[peerUsername];
           const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-          if (sender) sender.replaceTrack(screenVideoTrack);
+          if (sender) {
+            sender.replaceTrack(screenVideoTrack);
+          } else {
+            // Eğer karşıda video kanalı hiç yoksa yeniden müzakere (renegotiation) yapılır
+            pc.addTrack(screenVideoTrack, screenStream);
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            sendSignal(peerUsername, 'offer', offer);
+          }
         });
         
         if (localVideoRef.current) localVideoRef.current.srcObject = screenStream;
@@ -458,9 +527,7 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
   };
 
   const stopScreenShare = () => {
-    // Eğer kamerası yoksa çökmesin diye null check (?) ekledik
     const videoTrack = localStream?.getVideoTracks()[0];
-    
     Object.values(peerConnections.current).forEach(pc => {
       const sender = pc.getSenders().find(s => s.track?.kind === 'video');
       if (sender && videoTrack) sender.replaceTrack(videoTrack); 
@@ -468,6 +535,42 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
     
     if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
     setIsScreenSharing(false);
+  };
+
+  const changeDevice = async (kind, deviceId) => {
+    if (kind === 'audio') {
+      setSelectedAudio(deviceId);
+      setShowAudioMenu(false);
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: { exact: deviceId } } });
+        const newTrack = newStream.getAudioTracks()[0];
+        newTrack.enabled = !isMuted;
+        
+        localStream.removeTrack(localStream.getAudioTracks()[0]);
+        localStream.addTrack(newTrack);
+
+        Object.values(peerConnections.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'audio');
+          if (sender) sender.replaceTrack(newTrack);
+        });
+      } catch(e) { console.error(e); }
+    } else if (kind === 'video' && !isVideoOff && !isScreenSharing) {
+      setSelectedVideo(deviceId);
+      setShowVideoMenu(false);
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } } });
+        const newTrack = newStream.getVideoTracks()[0];
+        
+        localStream.removeTrack(localStream.getVideoTracks()[0]);
+        localStream.addTrack(newTrack);
+        if (localVideoRef.current) localVideoRef.current.srcObject = localStream;
+
+        Object.values(peerConnections.current).forEach(pc => {
+          const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+          if (sender) sender.replaceTrack(newTrack);
+        });
+      } catch(e) { console.error(e); }
+    }
   };
 
   const cleanupCall = () => {
@@ -481,7 +584,6 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
     <div className="fixed inset-0 z-[200] bg-black/95 backdrop-blur-3xl flex flex-col p-8 animate-in fade-in duration-300">
       <div className="flex justify-between items-center mb-8">
         <div>
-          {/* activeChat olmayabileceği ihtimaline karşı isim getirmeyi de güvenli hale getirdik */}
           <h2 className="text-2xl font-black text-white tracking-tighter">{activeChat?.name || activeCall?.caller || 'Sohbet'}</h2>
           <p className="text-green-400 text-xs font-bold uppercase tracking-widest flex items-center gap-2 mt-1">
             <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
@@ -516,18 +618,58 @@ export const CallOverlay = ({ activeChat, activeCall, currentUser, isVideoOff, s
       </div>
 
       <div className="flex justify-center items-center gap-4 mt-8">
-        <button onClick={toggleMute} className={`p-5 rounded-2xl border transition-all active:scale-90 ${isMuted ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}>
-          {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-        </button>
-        <button onClick={toggleVideo} className={`p-5 rounded-2xl border transition-all active:scale-90 ${isVideoOff ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}>
-          {isVideoOff ? <Camera className="w-6 h-6" /> : <Video className="w-6 h-6" />}
-        </button>
-        <button onClick={toggleScreenShare} className={`p-5 rounded-2xl border transition-all active:scale-90 ${isScreenSharing ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}>
+        
+        {/* Mikrofon ve Liste Seçici */}
+        <div className="relative flex items-center bg-neutral-800 rounded-2xl border border-neutral-700 transition-all active:scale-95 shadow-lg">
+          <button onClick={toggleMute} className={`p-4 rounded-l-2xl transition-all ${isMuted ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-white hover:bg-neutral-700'}`}>
+            {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+          </button>
+          <div className="w-[1px] h-8 bg-neutral-700"></div>
+          <button onClick={() => { setShowAudioMenu(!showAudioMenu); setShowVideoMenu(false); }} className={`p-4 rounded-r-2xl transition hover:text-white ${showAudioMenu ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-700'}`}>
+            <ChevronUp className="w-4 h-4" />
+          </button>
+          {showAudioMenu && (
+            <div className="absolute bottom-full left-0 mb-4 w-56 bg-[#111] border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-50 p-2">
+               <h4 className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest px-3 py-2 mb-1">Mikrofonlar</h4>
+               {audioDevices.map(d => (
+                 <button key={d.deviceId} onClick={() => changeDevice('audio', d.deviceId)} className={`w-full text-left px-3 py-2 text-xs font-bold rounded-xl transition truncate ${selectedAudio === d.deviceId ? 'bg-blue-600/20 text-blue-500' : 'text-neutral-300 hover:bg-neutral-800'}`}>
+                   {d.label || 'Bilinmeyen Mikrofon'}
+                 </button>
+               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Kamera ve Liste Seçici */}
+        <div className="relative flex items-center bg-neutral-800 rounded-2xl border border-neutral-700 transition-all active:scale-95 shadow-lg">
+          <button onClick={toggleVideo} className={`p-4 rounded-l-2xl transition-all ${isVideoOff ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-white hover:bg-neutral-700'}`}>
+            {isVideoOff ? <Camera className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+          </button>
+          <div className="w-[1px] h-8 bg-neutral-700"></div>
+          <button onClick={() => { setShowVideoMenu(!showVideoMenu); setShowAudioMenu(false); }} className={`p-4 rounded-r-2xl transition hover:text-white ${showVideoMenu ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-700'}`}>
+            <ChevronUp className="w-4 h-4" />
+          </button>
+          {showVideoMenu && (
+            <div className="absolute bottom-full left-0 mb-4 w-56 bg-[#111] border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-50 p-2">
+               <h4 className="text-[10px] text-neutral-500 font-bold uppercase tracking-widest px-3 py-2 mb-1">Kameralar</h4>
+               {videoDevices.map(d => (
+                 <button key={d.deviceId} onClick={() => changeDevice('video', d.deviceId)} className={`w-full text-left px-3 py-2 text-xs font-bold rounded-xl transition truncate ${selectedVideo === d.deviceId ? 'bg-blue-600/20 text-blue-500' : 'text-neutral-300 hover:bg-neutral-800'}`}>
+                   {d.label || 'Bilinmeyen Kamera'}
+                 </button>
+               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Ekran Paylaşımı Butonu */}
+        <button onClick={toggleScreenShare} className={`p-4 rounded-2xl border transition-all active:scale-95 ${isScreenSharing ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-neutral-800 border-neutral-700 text-white hover:bg-neutral-700'}`}>
           <MonitorUp className="w-6 h-6" />
         </button>
+
       </div>
     </div>
   );
 };
+
 
 export default { AddFriendModal, CreateGroupModal, RequestsModal, ChatDetailsModal, SettingsModal, CallOverlay };
