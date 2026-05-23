@@ -13,24 +13,25 @@ const ChatArea = ({
   showMediaPanel, setShowMediaPanel, gifSearch, setGifSearch, gifResults, 
   sendMediaMessage, toggleFavorite, favorites, stickerTab, setStickerTab, 
   inputText, handleTypingChange, handleSend, mediaPanel, setMediaPanel, currentUser, 
-  onHeaderClick, primaryColor, typingUsers 
+  onHeaderClick, primaryColor, typingUsers, activeCall, handleAcceptCall
 }) => {
-const [showAttachMenu, setShowAttachMenu] = useState(false);
-const fileInputRef = React.useRef(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const fileInputRef = React.useRef(null);
+  const hasLiveCallInThisChat = activeCall && (activeCall.caller === activeChatId || activeCall.room_id === activeChatId);
 
-const handleFileMenuClick = (type) => {
-setShowAttachMenu(false);
-if (type === 'poll') {
-return;
-}
-fileInputRef.current.click();
-};
+  const handleFileMenuClick = (type) => {
+  setShowAttachMenu(false);
+  if (type === 'poll') {
+  return;
+  }
+  fileInputRef.current.click();
+  };
 
-const handleFileUpload = async (e) => {
-const file = e.target.files[0];
-if (!file) return;
-alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`);
-};
+  const handleFileUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`);
+  };
 
   useEffect(() => {
     if (scrollRef && scrollRef.current) {
@@ -52,8 +53,44 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
    
   return (
     <div className="flex-1 flex flex-col bg-neutral-50 dark:bg-[#050505] relative transition-colors duration-300">
-      
-      <div onClick={onHeaderClick} className="h-20 border-b border-neutral-200 dark:border-neutral-800/40 flex items-center justify-between px-8 bg-white/40 dark:bg-black/40 backdrop-blur-2xl z-20 cursor-pointer hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors">
+      <div className="p-6 border-b border-neutral-200 dark:border-neutral-800/40 flex justify-between items-center">
+        <div className="flex items-center gap-4 cursor-pointer" onClick={onHeaderClick}>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-neutral-800 to-neutral-900 flex items-center justify-center text-white font-bold">
+            {activeChat?.name?.[0]?.toUpperCase()}
+          </div>
+          <div>
+            <h2 className="font-black text-sm text-neutral-900 dark:text-white uppercase tracking-tight">{activeChat?.name}</h2>
+            <p className="text-[9px] text-neutral-400 uppercase tracking-wider">Sohbet Detayları</p>
+          </div>
+        </div>
+
+        {/* Butonların Dönüşüm Alanı */}
+        <div className="flex items-center gap-2">
+          {hasLiveCallInThisChat ? (
+            // EĞER SOHBETTE AKTİF BİR ARAMA VARSA BUTONLAR "ARAMAYA KATIL" OLARAK DÖNÜŞÜR
+            <button 
+              onClick={handleAcceptCall}
+              className="bg-green-600 hover:bg-green-500 text-white text-[11px] font-black uppercase tracking-wider px-5 py-3 rounded-2xl flex items-center gap-2 shadow-lg shadow-green-600/20 animate-pulse transition-all active:scale-95"
+            >
+              <Zap className="w-4 h-4 text-white" /> Aramaya Katıl
+            </button>
+          ) : (
+            // AKTİF ARAMA YOKSA STANDART BUTONLAR RENDER EDİLİR
+            <>
+              <button onClick={() => handleStartCall('voice')} className="p-3 rounded-2xl bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:text-white hover:bg-blue-600 transition-all">
+                <Phone className="w-4 h-4" />
+              </button>
+              <button onClick={() => handleStartCall('video')} className="p-3 rounded-2xl bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:text-white hover:bg-blue-600 transition-all">
+                <Video className="w-4 h-4" />
+              </button>
+            </>
+          )}
+          <button className="p-3 rounded-2xl bg-neutral-100 dark:bg-neutral-900 text-neutral-600 dark:text-neutral-400 hover:text-white hover:bg-neutral-800 transition-all">
+            <Search className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      {/* <div onClick={onHeaderClick} className="h-20 border-b border-neutral-200 dark:border-neutral-800/40 flex items-center justify-between px-8 bg-white/40 dark:bg-black/40 backdrop-blur-2xl z-20 cursor-pointer hover:bg-neutral-100 dark:hover:bg-white/5 transition-colors">
         <div className="flex items-center gap-4">
           <div 
           className={`w-11 h-11 rounded-2xl flex items-center justify-center text-white font-black shadow-lg bg-gradient-to-tr ${activeChat.color}`}
@@ -72,7 +109,7 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
           <button onClick={() => handleStartCall('voice')} className="p-3 dark: hover:bg-white/10 rounded-xl transition" title="Sesli Sohbet"><Phone className="w-5 h-5 text-neutral-400" /></button>
           <button onClick={() => handleStartCall('video')} className="p-3 dark:bg-neutral-900/50 hover:bg-white/10 rounded-xl transition" title="Görüntülü Sohbet"><Video className="w-5 h-5 text-neutral-400" /></button>
         </div>
-      </div>
+      </div> */}
 
       <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
         {(messages[activeChatId] || []).map(m => {

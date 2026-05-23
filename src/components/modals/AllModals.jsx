@@ -239,85 +239,111 @@ export const SettingsModal = ({ setShowSettings, currentUser, setCurrentUser, su
 // --- 6. GELİŞMİŞ WEBRTC CALL OVERLAY ---
 
 // --- BİREYSEL KULLANICI VİDEOSU & %200 SES KONTROLÜ ---
-export const RemotePeerVideo = ({ peer, toggleFullScreen, isFullScreen }) => {
-  const videoRef = useRef(null);
-  const audioCtxRef = useRef(null);
-  const gainNodeRef = useRef(null);
-  
-  const [volume, setVolume] = useState(1); // 1 = 100%, 2 = 200%
-  const [showContextMenu, setShowContextMenu] = useState(false);
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 });
 
-  // 1. Önceki ses ayarını hatırla
-  useEffect(() => {
-    const savedVol = localStorage.getItem(`webrtc_vol_${peer.username}`);
-    if (savedVol) setVolume(parseFloat(savedVol));
-  }, [peer.username]);
+export const RemotePeerVideo = ({ peer, toggleFullScreen, fullScreenUser }) => {
+  const [volume, setVolume] = useState(70);               // Video ses düzeyi
+  const [showIndicator, setShowIndicator] = useState(false); // Ses göstergesi görünürlüğü
+  const [showMiddlePanel, setShowMiddlePanel] = useState(false); // Orta tuş ayar paneli
+  const indicatorTimeoutRef = useRef(null);
 
-  // 2. Web Audio API ile sesi %200'e kadar artırma (GainNode)
-  useEffect(() => {
-    if (videoRef.current && peer.stream) {
-      videoRef.current.srcObject = peer.stream;
-      
-      // Çift ses gelmemesi için HTML videosunu sessize alıyoruz, sesi Audio API yönetecek
-      videoRef.current.muted = true; 
-
-      if (!audioCtxRef.current) {
-        const AudioContext = window.AudioContext || window.webkitAudioContext;
-        audioCtxRef.current = new AudioContext();
-        const source = audioCtxRef.current.createMediaStreamSource(peer.stream);
-        gainNodeRef.current = audioCtxRef.current.createGain();
-        source.connect(gainNodeRef.current);
-        gainNodeRef.current.connect(audioCtxRef.current.destination);
-      }
-      
-      gainNodeRef.current.gain.value = volume;
+  // MOUSE ORTA TUŞ TIKLAMA FONSİYONU (e.button === 1)
+  const handleAuxClick = (e) => {
+    if (e.button === 1) { // 1 numaralı buton mouse tekerlek tıkıdır
+      e.preventDefault(); // Sayfa kaydırma ikonunu engeller
+      setShowMiddlePanel(prev => !prev);
     }
-  }, [peer.stream, volume]);
-
-  const handleRightClick = (e) => {
-    e.preventDefault();
-    setMenuPos({ x: e.nativeEvent.offsetX, y: e.nativeEvent.offsetY });
-    setShowContextMenu(true);
   };
 
-  const changeVolume = (e) => {
-    const val = parseFloat(e.target.value);
-    setVolume(val);
-    if (gainNodeRef.current) gainNodeRef.current.gain.value = val;
-    localStorage.setItem(`webrtc_vol_${peer.username}`, val);
+  // MOUSE TEKERLEĞİ İLE SES DEĞİŞTİRME FONKSİYONU
+  const handleWheel = (e) => {
+    e.preventDefault(); // Varsayılan sayfa kaydırmasını engelle
+    
+    if (e.deltaY < 0) {
+      // Tekerlek yukarı yapıldı -> Sesi artır
+      setVolume(prev => Math.min(100, prev + 5));
+    } else {
+      // Tekerlek aşağı yapıldı -> Sesi kıs
+      setVolume(prev => Math.max(0, prev - 5));
+    }
+
+    // Göstergeyi tetikle ve belirli süre sonra gizle
+    setShowIndicator(true);
+    clearTimeout(indicatorTimeoutRef.current);
+    indicatorTimeoutRef.current = setTimeout(() => {
+      setShowIndicator(false);
+    }, 1200);
   };
+
+  const isThisUserFullScreen = fullScreenUser === peer.id;
 
   return (
-    <div 
-      className={`relative rounded-3xl overflow-hidden bg-black shadow-2xl transition-all duration-300 ${isFullScreen ? 'col-span-full h-[70vh]' : 'h-64'}`}
-      onContextMenu={handleRightClick}
-      onClick={() => { if(showContextMenu) setShowContextMenu(false); else toggleFullScreen(peer.username); }}
+    <div
+      onAuxClick={handleAuxClick}
+      onWheel={handleWheel}
+      className={`relative bg-neutral-950 overflow-hidden group transition-all duration-300 ${
+        isThisUserFullScreen
+          ? 'fixed left-0 top-0 w-screen h-screen z-[999] rounded-none' // GERÇEK TAM EKRAN KATMANI
+          : 'w-full h-64 rounded-[32px] border border-neutral-800/80 shadow-xl'
+      }`}
     >
-      <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
-      
+      {/* Video Akışı */}
+      <video
+        autoPlay
+        playsInline
+        className="w-full h-full object-cover"
+        style={{ volume: volume / 100 }}
+      />
+
       {/* Kullanıcı Adı Etiketi */}
-      <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl text-white text-xs font-bold tracking-wider">
-        {peer.username}
+      <div className="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/5 text-white font-bold text-[10px] tracking-wider uppercase">
+        {peer.name || 'Uzak Kullanıcı'}
       </div>
 
-      {/* Sağ Tık (Context) Menüsü - Ses Ayarı */}
-      {showContextMenu && (
-        <div 
-          className="absolute z-50 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 p-4 rounded-2xl shadow-2xl backdrop-blur-xl w-48"
-          style={{ top: menuPos.y, left: menuPos.x }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-bold text-neutral-900 dark:text-white uppercase tracking-wider">Ses Seviyesi</span>
-            <span className="text-xs text-blue-500 font-black">%{Math.round(volume * 100)}</span>
-          </div>
-          <input 
-            type="range" min="0" max="2" step="0.1" 
-            value={volume} onChange={changeVolume}
-            className="w-full accent-blue-500 cursor-pointer"
-          />
+      {/* KARENİN KÖŞESİNDEKİ KÜÇÜK SES DÜZEYİ GÖSTERGESİ */}
+      {showIndicator && (
+        <div className="absolute top-4 right-4 bg-black/80 backdrop-blur-xl text-white text-[11px] font-black px-3 py-2 rounded-xl border border-white/10 flex items-center gap-2 shadow-2xl animate-in scale-in duration-100">
+          <Volume2 className="w-3.5 h-3.5 text-blue-500 animate-pulse" />
+          <span className="text-neutral-400 font-mono text-[9px] tracking-widest uppercase">SES:</span>
+          <span className="text-blue-400 font-mono text-xs">{volume}%</span>
         </div>
+      )}
+
+      {/* MOUSE ORTA TUŞ PANELİ (AYARLAMA PANELİ) */}
+      {showMiddlePanel && (
+        <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 z-[160] animate-in fade-in duration-200">
+          <div className="w-10 h-10 bg-neutral-800 rounded-xl flex items-center justify-center mb-2 border border-neutral-700">
+            <Settings className="w-5 h-5 text-neutral-300" />
+          </div>
+          <h4 className="text-xs font-black text-white uppercase tracking-widest mb-4">Kullanıcı Kontrolü</h4>
+          
+          <div className="flex gap-2 w-full max-w-[200px]">
+            <button
+              onClick={() => {
+                toggleFullScreen(peer.id);
+                setShowMiddlePanel(false);
+              }}
+              className="flex-1 py-2.5 bg-white text-black font-black text-[10px] uppercase tracking-wider rounded-xl hover:bg-neutral-200 transition active:scale-95"
+            >
+              {isThisUserFullScreen ? 'Küçült' : 'Tam Ekran'}
+            </button>
+            <button
+              onClick={() => setShowMiddlePanel(false)}
+              className="px-3 py-2.5 bg-neutral-800 text-white font-black text-[10px] uppercase tracking-wider rounded-xl hover:bg-neutral-700 transition"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* GERÇEK TAM EKRANDAYKEN SAĞ ALTA SABİTLENEN KÜÇÜLTME BUTONU */}
+      {isThisUserFullScreen && (
+        <button
+          onClick={() => toggleFullScreen(peer.id)}
+          className="absolute bottom-6 right-6 p-4 bg-red-600 hover:bg-red-500 text-white rounded-2xl z-[1000] shadow-2xl transition active:scale-95 flex items-center gap-2 font-black text-xs uppercase tracking-widest animate-bounce"
+        >
+          <Minimize className="w-5 h-5" /> Ekrandan Çık
+        </button>
       )}
     </div>
   );

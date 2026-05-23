@@ -26,6 +26,9 @@ const App = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [authMode, setAuthMode] = useState('login');
   
+  const [incomingCall, setIncomingCall] = useState(null); // Gelen arama sinyali durum bilgisi
+  const [activeCall, setActiveCall] = useState(null);     // Aktif devam eden arama bilgisi
+
   const [messages, setMessages] = useState({});
   const [friendRequests, setFriendRequests] = useState([]);
   const [groups, setGroups] = useState([]); 
@@ -82,6 +85,107 @@ const App = () => {
 
   const activeChat = useMemo(() => userChats.find(c => c.id === activeChatId), [activeChatId, userChats]);
   const friendsList = useMemo(() => userChats.filter(c => !c.isGroup), [userChats]);
+
+  // GERÇEK ZAMANLI TAKİP İÇİN EFFECT BLOĞU
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // 1. Gerçek Zamanlı Arama Kanalı (Broadcast Sinyalleri)
+    const callChannel = supabase
+      .channel('realtime-calls')
+      .on('broadcast', { event: 'call-invite' }, ({ payload }) => {
+        // Birisi bizi arıyorsa anlık olarak ekranda modal tetiklensin
+        if (payload.receiver === currentUser && payload.status === 'ringing') {
+          setIncomingCall(payload);
+        }
+      })
+      .on('broadcast', { event: 'call-action' }, ({ payload }) => {
+        if (payload.room_id === activeCall?.room_id || payload.room_id === incomingCall?.room_id) {
+          if (payload.status === 'ended') {
+            setIsCalling(false);
+            setIncomingCall(null);
+            setActiveCall(null);
+          } else if (payload.status === 'accepted') {
+            setIsCalling(true);
+            setIncomingCall(null);
+            setActiveCall(payload);
+          }
+        }
+      })
+      .subscribe();
+
+    // 2. Gerçek Zamanlı Arkadaşlık İstekleri & DM Listesi Güncellemesi (Postgres Changes)
+    const friendshipChannel = supabase
+      .channel('friendship-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friend_requests' }, (payload) => {
+        // İstek bize geldiyse anlık olarak istek listesine ekle
+        if (payload.new.receiver === currentUser) {
+          setFriendRequests(prev => [...prev, payload.new]);
+          notify("Yeni bir arkadaşlık isteği aldınız!", "info");
+        }
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friend_requests' }, (payload) => {
+        const { sender, receiver, status } = payload.new;
+        // İstek onaylandığı an iki tarafta da yenileme olmadan DM listesine sol tarafa yansır
+        if ((sender === currentUser || receiver === currentUser) && status === 'accepted') {
+          const friendName = sender === currentUser ? receiver : sender;
+          
+          setUserChats(prev => {
+            // Eğer zaten listede varsa mükerrer ekleme yapma
+            if (prev.some(c => c.name === friendName)) return prev;
+            return [
+              ...prev,
+              {
+                id: friendName, // ya da benzersiz oda/kullanıcı ID'si
+                name: friendName,
+                color: 'from-blue-500 to-indigo-600',
+                lastSeen: 'Az önce'
+              }
+            ];
+          });
+          notify(`${friendName} ile artık arkadaşsınız! DM listenize eklendi.`, "success");
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(callChannel);
+      supabase.removeChannel(friendshipChannel);
+    };
+  }, [currentUser, activeCall, incomingCall]);
+
+// Arama kabul etme fonksiyonu
+const handleAcceptCall = () => {
+  if (!incomingCall) return;
+  const acceptedPayload = { ...incomingCall, status: 'accepted' };
+  
+  // Arayan tarafa kabul edildiğini broadcast et
+  supabase.channel('realtime-calls').send({
+    type: 'broadcast',
+    event: 'call-action',
+    payload: acceptedPayload
+  });
+
+  setActiveCall(acceptedPayload);
+  setIsCalling(true);
+  setIncomingCall(null);
+};
+
+// Arama reddetme / sonlandırma fonksiyonu
+const handleRejectCall = () => {
+  const targetCall = incomingCall || activeCall;
+  if (!targetCall) return;
+
+  supabase.channel('realtime-calls').send({
+    type: 'broadcast',
+    event: 'call-action',
+    payload: { ...targetCall, status: 'ended' }
+  });
+
+  setIsCalling(false);
+  setIncomingCall(null);
+  setActiveCall(null);
+};
 
   useEffect(() => {
     userChatsRef.current = userChats;
@@ -395,6 +499,9 @@ const App = () => {
       {showChatDetails && <ChatDetailsModal activeChat={activeChat} setShowChatDetails={setShowChatDetails} handleStartCall={handleStartCall} handleAction={(type, target, action) => console.log(type, target, action)} notify={notify} />}
       {isCalling && <CallOverlay      activeChat={activeChat}      currentUser={currentUser}      isVideoOff={isVideoOff}      setIsVideoOff={setIsVideoOff}      isMuted={isMuted}      setIsMuted={setIsMuted}      handleEndCall={handleEndCall}      supabase={supabase}    />}
       {showSettings && <SettingsModal setShowSettings={setShowSettings} currentUser={currentUser} setCurrentUser={setCurrentUser} supabase={supabase} notify={notify} theme={theme} setTheme={setTheme} primaryColor={primaryColor} setPrimaryColor={setPrimaryColor} />}
+      {/* GELEN ARAMA ANLIK BİLDİRİM PANELİ */} {incomingCall && (   <div className="fixed inset-x-0 top-6 mx-auto w-full max-w-sm bg-neutral-900/95 backdrop-blur-2xl border border-neutral-800 p-6 rounded-[32px] shadow-2xl z-[200] flex flex-col items-center gap-4 animate-in slide-in-from-top duration-300">     <div className="w-12 h-12 bg-blue-600/10 rounded-2xl flex items-center justify-center text-blue-500 animate-pulse">       <Phone className="w-6 h-6" />     </div>     <div className="text-center">       <h4 className="text-sm font-black text-white uppercase tracking-wider">{incomingCall.caller} Arıyor...</h4>       <p className="text-[10px] text-neutral-500 uppercase tracking-widest mt-0.5">Gelen Sesli/Görüntülü Arama</p>     </div>     <div className="flex gap-3 w-full mt-2">       <button onClick={handleRejectCall} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white text-xs font-black uppercase rounded-xl transition active:scale-95">Reddet</button>       <button onClick={handleAcceptCall} className="flex-1 py-3 bg-green-500 hover:bg-green-600 text-white text-xs font-black uppercase rounded-xl transition active:scale-95 animate-bounce">Kabul Et</button>     </div>   </div> )}
+    
+    
     </div>
   );
 };
