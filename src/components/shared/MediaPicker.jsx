@@ -25,7 +25,7 @@ const MediaPicker = ({ onSelect, onClose, activeTab, setActiveTab }) => {
   }, [activeTab, search]);
 
   return (
-    <div className="absolute bottom-full mb-4 left-0 right-0 dark:bg-[#0a0a0a]/95 backdrop-blur-2xl border dark:border-neutral-800/60 rounded-[32px] shadow-2xl z-50 overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+    <div className="absolute bottom-full w-max-4xl h-[35rem] mb-4 left-0 right-0 dark:bg-[#0a0a0a]/95 bg-[#FAFAFA]/95 backdrop-blur-2xl border dark:border-neutral-800/60 rounded-[32px] shadow-2xl z-50 overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
       <div className="flex p-2 dark:bg-black/40 border-b dark:border-neutral-800/40">
         {[
           { id: 'emoji', icon: Smile, label: 'Emoji' },
@@ -45,11 +45,11 @@ const MediaPicker = ({ onSelect, onClose, activeTab, setActiveTab }) => {
         <button onClick={onClose} className="p-3 dark:text-neutral-600 dark:hover:text-white hover:text-white transition"><X className="w-4 h-4"/></button>
       </div>
 
-      <div className="h-72 overflow-y-auto p-4 custom-scrollbar">
+      <div className="h-full overflow-y-auto p-4 custom-scrollbar">
         {activeTab === 'emoji' && (
           <div className="grid grid-cols-6 gap-2">
             {EMOJI_LIST.map(emoji => (
-              <button key={emoji} onClick={() => onSelect('text', emoji)} className="text-3xl p-2 dark:hover:bg-neutral-800 rounded-xl transition-all active:scale-125">
+              <button key={emoji} onClick={() => onSelect('text', emoji)} className="text-3xl p-2 dark:hover:bg-neutral-800 rounded-xl transition-all active:scale-125 h-full">
                 {emoji}
               </button>
             ))}

@@ -199,7 +199,7 @@ alert(`Seçilen dosya: ${file.name}. Supabase Storage bağlantısı gerekiyor!`)
               <Smile className="w-6 h-6" />
             </button>
             {mediaPanel && (
-              <div className="absolute bottom-full left-0 right-0 mb-4 w-full">
+              <div className="absolute bottom-full right-0 mb-4 w-[30rem]">
                 <MediaPicker activeTab={mediaPanel} setActiveTab={setMediaPanel} onClose={() => setMediaPanel(null)} onSelect={handleSend} />
               </div>
             )}

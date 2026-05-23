@@ -393,7 +393,7 @@ const App = () => {
       {showCreateGroup && <CreateGroupModal setShowCreateGroup={setShowCreateGroup} createGroup={createGroup} friendsList={friendsList} />}
       {showRequests && <RequestsModal setShowRequests={setShowRequests} incomingRequests={incomingRequests} outgoingRequests={outgoingRequests} handleAction={handleRequestAction} />}
       {showChatDetails && <ChatDetailsModal activeChat={activeChat} setShowChatDetails={setShowChatDetails} handleStartCall={handleStartCall} handleAction={(type, target, action) => console.log(type, target, action)} notify={notify} />}
-      {isCalling && <CallOverlay activeChat={activeChat} isVideoOff={isVideoOff} setIsVideoOff={setIsVideoOff} isMuted={isMuted} setIsMuted={setIsMuted} localVideoRef={localVideoRef} handleEndCall={handleEndCall} />}
+      {isCalling && <CallOverlay      activeChat={activeChat}      currentUser={currentUser}      isVideoOff={isVideoOff}      setIsVideoOff={setIsVideoOff}      isMuted={isMuted}      setIsMuted={setIsMuted}      handleEndCall={handleEndCall}      supabase={supabase}    />}
       {showSettings && <SettingsModal setShowSettings={setShowSettings} currentUser={currentUser} setCurrentUser={setCurrentUser} supabase={supabase} notify={notify} theme={theme} setTheme={setTheme} primaryColor={primaryColor} setPrimaryColor={setPrimaryColor} />}
     </div>
   );
